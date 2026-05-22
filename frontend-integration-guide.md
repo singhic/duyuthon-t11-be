@@ -1,0 +1,1873 @@
+# 이약뭐지 프론트엔드 연동 가이드
+
+이 문서는 프론트엔드 작업자가 Supabase Auth부터 OCR, 약품 분석, 챗봇, 복약 일정 API까지 바로 붙일 수 있도록 정리한 연동 문서다.
+
+현재 원격 Supabase 프로젝트:
+
+```text
+Project ref: hygsrrmoawezonahnljn
+Project URL: https://hygsrrmoawezonahnljn.supabase.co
+```
+
+## 1. 프론트엔드에서 필요한 환경변수
+
+프론트엔드에는 공개 가능한 값만 넣는다.
+
+### Vite
+
+```env
+VITE_SUPABASE_URL=https://hygsrrmoawezonahnljn.supabase.co
+VITE_SUPABASE_ANON_KEY=<Supabase anon 또는 publishable key>
+```
+
+### Next.js
+
+```env
+NEXT_PUBLIC_SUPABASE_URL=https://hygsrrmoawezonahnljn.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=<Supabase anon 또는 publishable key>
+```
+
+프론트엔드에 절대 넣으면 안 되는 값:
+
+```text
+SUPABASE_SERVICE_ROLE_KEY
+SUPABASE_SECRET_KEYS
+GOOGLE_SERVICE_ACCOUNT_JSON
+GOOGLE_VISION_API_KEY
+GEMINI_API_KEY
+DATA_GO_KR_SERVICE_KEY
+```
+
+위 값들은 모두 Supabase Edge Function Secret으로만 사용한다.
+
+## 2. Supabase 클라이언트 생성
+
+예시는 `@supabase/supabase-js` 기준이다.
+
+```ts
+import { createClient } from "@supabase/supabase-js";
+
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+
+export const supabase = createClient(supabaseUrl, supabaseAnonKey);
+```
+
+Next.js라면:
+
+```ts
+import { createClient } from "@supabase/supabase-js";
+
+export const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+);
+```
+
+## 3. Auth 연동
+
+현재 Google OAuth provider는 Supabase에 연결되어 있고, OAuth 시작 URL이 Google로 정상 리다이렉트되는 것을 확인했다.
+
+### 3.1 Google 로그인
+
+```ts
+export async function signInWithGoogle() {
+  const { data, error } = await supabase.auth.signInWithOAuth({
+    provider: "google",
+    options: {
+      redirectTo: `${window.location.origin}/auth/callback`,
+    },
+  });
+
+  if (error) throw error;
+  return data;
+}
+```
+
+프론트 라우터에는 다음 경로를 준비한다.
+
+```text
+/auth/callback
+```
+
+### 3.2 OAuth callback 처리
+
+Supabase JS v2는 callback URL 진입 후 세션을 자동 복구할 수 있다. 앱 시작 시 아래처럼 세션을 확인한다.
+
+```ts
+export async function getCurrentSession() {
+  const { data, error } = await supabase.auth.getSession();
+  if (error) throw error;
+  return data.session;
+}
+```
+
+로그인 사용자 확인:
+
+```ts
+export async function getCurrentUser() {
+  const { data, error } = await supabase.auth.getUser();
+  if (error) throw error;
+  return data.user;
+}
+```
+
+로그아웃:
+
+```ts
+export async function signOut() {
+  const { error } = await supabase.auth.signOut();
+  if (error) throw error;
+}
+```
+
+### 3.3 로그인 후 프로필 생성
+
+로그인 직후 `user_profiles`에 프로필이 없으면 생성한다.
+
+```ts
+export async function ensureUserProfile() {
+  const { data: userData, error: userError } = await supabase.auth.getUser();
+  if (userError) throw userError;
+
+  const user = userData.user;
+  if (!user) throw new Error("로그인이 필요합니다.");
+
+  const { data: existing, error: selectError } = await supabase
+    .from("user_profiles")
+    .select("user_id")
+    .eq("user_id", user.id)
+    .maybeSingle();
+
+  if (selectError) throw selectError;
+  if (existing) return existing;
+
+  const { data, error } = await supabase
+    .from("user_profiles")
+    .insert({
+      user_id: user.id,
+      display_name:
+        user.user_metadata?.full_name ??
+        user.user_metadata?.name ??
+        "사용자",
+      role: "patient",
+      accessibility_preference: {},
+    })
+    .select()
+    .single();
+
+  if (error) throw error;
+  return data;
+}
+```
+
+주의:
+
+- 프론트에서 `role: "admin"`을 넣으면 RLS 정책상 거부된다.
+- 일반 사용자는 `patient` 또는 `caregiver`만 생성 가능하다.
+
+## 4. 핵심 사용자 플로우
+
+### 4.0 MVP 필수 흐름 고정
+
+프론트는 아래 순서를 기준으로 구현한다.
+
+```text
+1. 로그인
+2. 처방전/약봉투/약 포장 이미지 업로드
+3. scan_sessions 생성
+4. google-ocr 호출
+5. analyze-medication 호출
+6. resultMode에 따라 약 정보 표시 또는 재촬영/확인 안내
+7. 사용자가 약 후보를 확인하면 confirm-medication 호출
+8. 복용법을 보고 medication-schedules 생성
+9. 오늘 먹을 약 체크리스트 표시
+10. 복용 완료/건너뜀 선택 시 medication-logs-check 호출
+11. 사용자가 질문하면 gemini-chat 호출
+12. 필요한 경우 check-interactions 호출
+```
+
+프론트에서 금지하는 처리:
+
+- OCR 결과만 보고 현재 복용약 자동 등록
+- `null`인 복용법/주의사항을 프론트에서 추측 생성
+- `overallSeverity = "no_registered_warning"`을 “안전함”으로 표시
+- Gemini 응답의 `disclaimer` 제거
+- 같은 약을 active 복용약으로 직접 중복 insert
+
+사진 기반 OCR 분석 플로우는 다음 순서다.
+
+```text
+1. 로그인 확인
+2. scanId 생성
+3. Storage prescription-temp 버킷에 이미지 업로드
+4. scan_sessions row 생성
+5. google-ocr Edge Function 호출
+6. analyze-medication Edge Function 호출
+7. 사용자가 후보 약품 확인
+8. confirm-medication Edge Function 호출
+9. 필요 시 delete-scan-image Edge Function 호출
+```
+
+## 5. 공통 API 호출 규칙
+
+모든 Edge Function은 로그인 세션이 필요하다. 프론트에서는 `supabase.functions.invoke()`를 사용하면 현재 세션의 Authorization header가 자동으로 포함된다.
+
+직접 HTTP로 호출해야 한다면 다음 형식을 사용한다.
+
+```http
+POST https://hygsrrmoawezonahnljn.supabase.co/functions/v1/{function-name}
+Authorization: Bearer {access_token}
+Content-Type: application/json
+```
+
+공통 실패 응답:
+
+```ts
+type ApiErrorResponse = {
+  error: string;
+  details?: unknown | null;
+};
+```
+
+주요 HTTP status:
+
+```text
+400: 요청 body 누락 또는 형식 오류
+401: 로그인 세션 없음 또는 만료
+403: 본인 데이터가 아니거나 admin 권한 없음
+404: 대상 scan, 약품, 보호자 링크 등을 찾을 수 없음
+405: 지원하지 않는 HTTP method
+429: 일일 OCR/Gemini 사용량 초과
+500: 서버 내부 처리 실패
+502: Google OCR/Gemini/FCM 등 외부 API 응답 오류
+```
+
+프론트 처리 원칙:
+
+- `401`은 재로그인으로 보낸다.
+- `403`은 “접근 권한이 없습니다”로 표시한다.
+- `429`는 “오늘 사용 가능한 횟수를 초과했습니다”로 표시한다.
+- `500` 또는 `502`는 재시도 버튼과 전문가 확인 안내를 같이 제공한다.
+- `details`는 개발/로그용이다. 그대로 사용자에게 보여주지 않는다.
+
+## 6. 이미지 업로드
+
+이미지는 `prescription-temp` private bucket에 업로드한다.
+
+경로 규칙:
+
+```text
+{user_id}/{scan_id}/original.{ext}
+```
+
+예시:
+
+```ts
+export async function uploadPrescriptionImage(file: File) {
+  const { data: userData, error: userError } = await supabase.auth.getUser();
+  if (userError) throw userError;
+  const user = userData.user;
+  if (!user) throw new Error("로그인이 필요합니다.");
+
+  const scanId = crypto.randomUUID();
+  const ext = file.type === "image/png" ? "png" : "jpeg";
+  const imagePath = `${user.id}/${scanId}/original.${ext}`;
+
+  const { error: uploadError } = await supabase.storage
+    .from("prescription-temp")
+    .upload(imagePath, file, {
+      contentType: file.type,
+      upsert: true,
+    });
+
+  if (uploadError) throw uploadError;
+
+  const { error: scanError } = await supabase
+    .from("scan_sessions")
+    .insert({
+      id: scanId,
+      user_id: user.id,
+      image_path: imagePath,
+      status: "uploaded",
+    });
+
+  if (scanError) throw scanError;
+
+  return { scanId, imagePath };
+}
+```
+
+지원 MIME type:
+
+```text
+image/jpeg
+image/png
+image/webp
+```
+
+현재 Storage 파일 제한:
+
+```text
+10MiB
+```
+
+## 7. OCR 호출
+
+Edge Function:
+
+```text
+POST /functions/v1/google-ocr
+```
+
+Request Body:
+
+```ts
+type GoogleOcrRequest = {
+  scanId: string;
+};
+```
+
+Response Body:
+
+```ts
+type GoogleOcrResponse = {
+  scanId: string;
+  ocrText: string;
+  confidence: number | null;
+  imageDeleted: boolean;
+  needsManualReview: boolean;
+  failureReason: "empty_ocr_text" | "low_ocr_confidence" | "ocr_request_failed" | null;
+  recommendedAction: string;
+  pharmacyContact: {
+    name: string | null;
+    phone: string | null;
+  } | null;
+  next: string;
+};
+```
+
+Supabase JS:
+
+```ts
+export async function runOcr(scanId: string) {
+  const { data, error } = await supabase.functions.invoke("google-ocr", {
+    body: { scanId },
+  });
+
+  if (error) throw error;
+  return data as {
+    scanId: string;
+    ocrText: string;
+    confidence: number | null;
+    imageDeleted: boolean;
+    needsManualReview: boolean;
+    failureReason: string | null;
+    recommendedAction: string;
+    pharmacyContact: { name: string | null; phone: string | null } | null;
+    next: string;
+  };
+}
+```
+
+성공 응답 예시:
+
+```json
+{
+  "scanId": "uuid",
+  "ocrText": "타이레놀정 500mg ...",
+  "confidence": 0.91,
+  "imageDeleted": true,
+  "needsManualReview": false,
+  "failureReason": null,
+  "recommendedAction": "Call /functions/v1/analyze-medication",
+  "pharmacyContact": {
+    "name": "이약뭐지약국",
+    "phone": "02-1234-5678"
+  },
+  "next": "Call /functions/v1/analyze-medication"
+}
+```
+
+저신뢰도 응답 예시:
+
+```json
+{
+  "scanId": "uuid",
+  "ocrText": "#8888\nDRIVE\nL\n0",
+  "confidence": 0.61,
+  "imageDeleted": true,
+  "needsManualReview": true,
+  "failureReason": "low_ocr_confidence",
+  "recommendedAction": "OCR 신뢰도가 낮습니다. 인식된 약 이름과 복용법을 사용자가 직접 확인해야 합니다.",
+  "pharmacyContact": null,
+  "next": "OCR 신뢰도가 낮습니다. 인식된 약 이름과 복용법을 사용자가 직접 확인해야 합니다."
+}
+```
+
+대표 실패 응답:
+
+```json
+{
+  "error": "Scan session not found",
+  "details": null
+}
+```
+
+현재 OCR은 `GOOGLE_SERVICE_ACCOUNT_JSON` 기반 서비스 계정 인증으로 정상 작동한다.
+
+UI 분기:
+
+- `needsManualReview = true`: 자동 결과를 확정하지 말고 재촬영 또는 약사/의사 확인 안내를 표시한다.
+- `failureReason = "low_ocr_confidence"`: 인식 텍스트는 보여주되 약품 등록 전 사용자 확인을 강제한다.
+- `failureReason = "empty_ocr_text"`: 재촬영 안내를 우선 표시한다.
+- `pharmacyContact`가 있으면 OCR 실패/저신뢰도 화면에서 처방 약국 연락처로 보여줄 수 있다.
+
+## 8. 약품 분석 호출
+
+Edge Function:
+
+```text
+POST /functions/v1/analyze-medication
+```
+
+Request Body:
+
+```ts
+type AnalyzeMedicationRequest = {
+  scanId: string;
+};
+```
+
+Response Body:
+
+```ts
+type AnalyzeMedicationResponse = {
+  scanId: string;
+  candidates: string[];
+  detectedMedications: Array<{
+    id: string;
+    scan_id: string;
+    medication_id: string | null;
+    detected_name: string;
+    matched_name: string | null;
+    confidence: number;
+    match_quality: "high" | "medium" | "low" | "none" | "unknown";
+    match_method: "exact" | "fuzzy" | "alias" | "edi_code" | "barcode" | "manual_review" | "none";
+    dosage_instruction: Record<string, unknown>;
+    warning_message: string | null;
+    needs_confirmation: boolean;
+    created_at: string;
+    medications: {
+      id: string;
+      item_name: string;
+      entp_name: string | null;
+      efficacy: string | null;
+      dosage: string | null;
+      precautions: string | null;
+      side_effects: string | null;
+      storage_method: string | null;
+      administration_timing: string | null;
+      information_completeness: Record<string, boolean> | null;
+      source: string | null;
+      source_updated_at: string | null;
+    } | null;
+  }>;
+  resultMode: "ready" | "review_required" | "no_candidates";
+  matchQuality: "high" | "medium" | "low" | "none";
+  unmatchedCandidates: string[];
+  needsUserConfirmation: boolean;
+  autoDisplayReady: boolean;
+  informationAvailability: {
+    hasMedicationDetails: boolean;
+    missingFields: string[];
+  };
+  recommendedAction: string;
+};
+```
+
+```ts
+export async function analyzeMedication(scanId: string) {
+  const { data, error } = await supabase.functions.invoke("analyze-medication", {
+    body: { scanId },
+  });
+
+  if (error) throw error;
+  return data as {
+    scanId: string;
+    candidates: string[];
+    detectedMedications: Array<{
+      id: string;
+      scan_id: string;
+      medication_id: string | null;
+      detected_name: string;
+      matched_name: string | null;
+      confidence: number;
+      match_quality: "high" | "medium" | "low" | "none" | "unknown";
+      match_method:
+        | "exact"
+        | "fuzzy"
+        | "alias"
+        | "edi_code"
+        | "barcode"
+        | "manual_review"
+        | "none";
+      warning_message: string | null;
+      needs_confirmation: boolean;
+      medications: {
+        id: string;
+        item_name: string;
+        entp_name: string | null;
+        efficacy: string | null;
+        dosage: string | null;
+        precautions: string | null;
+        side_effects: string | null;
+        storage_method: string | null;
+        administration_timing: string | null;
+        information_completeness: Record<string, boolean> | null;
+        source: string | null;
+        source_updated_at: string | null;
+      } | null;
+    }>;
+    resultMode: "ready" | "review_required" | "no_candidates";
+    matchQuality: "high" | "medium" | "low" | "none";
+    unmatchedCandidates: string[];
+    needsUserConfirmation: boolean;
+    autoDisplayReady: boolean;
+    informationAvailability: {
+      hasMedicationDetails: boolean;
+      missingFields: string[];
+    };
+    recommendedAction: string;
+  };
+}
+```
+
+응답 예시:
+
+```json
+{
+  "scanId": "uuid",
+  "candidates": ["TYLENOL ER"],
+  "detectedMedications": [
+    {
+      "id": "detected-uuid",
+      "scan_id": "scan-uuid",
+      "medication_id": "medication-uuid",
+      "detected_name": "TYLENOL ER",
+      "matched_name": "타이레놀8시간이알서방정(아세트아미노펜)",
+      "confidence": 0.99,
+      "match_quality": "high",
+      "match_method": "alias",
+      "dosage_instruction": {},
+      "warning_message": null,
+      "needs_confirmation": false,
+      "created_at": "2026-05-22T02:00:00.000Z",
+      "medications": {
+        "id": "medication-uuid",
+        "item_name": "타이레놀8시간이알서방정(아세트아미노펜)",
+        "entp_name": "켄뷰코리아판매유한회사",
+        "efficacy": "공공 DB 원문",
+        "dosage": "공공 DB 원문",
+        "precautions": "공공 DB 원문",
+        "side_effects": null,
+        "storage_method": "공공 DB 원문",
+        "administration_timing": null,
+        "information_completeness": {
+          "efficacy": true,
+          "dosage": true,
+          "precautions": true,
+          "side_effects": false,
+          "storage_method": true
+        },
+        "source": "data.go.kr",
+        "source_updated_at": "2026-05-22T00:00:00.000Z"
+      }
+    }
+  ],
+  "resultMode": "ready",
+  "matchQuality": "high",
+  "unmatchedCandidates": [],
+  "needsUserConfirmation": false,
+  "autoDisplayReady": true,
+  "informationAvailability": {
+    "hasMedicationDetails": true,
+    "missingFields": []
+  },
+  "recommendedAction": "약품 후보를 바로 표시할 수 있습니다. 사용자가 최종 확인하면 현재 복용약으로 등록하세요."
+}
+```
+
+UI 표시 원칙:
+
+- `resultMode = "ready"`이고 `autoDisplayReady = true`이면 약품 정보 화면을 바로 보여줄 수 있다. 단, 현재 복용약 등록은 사용자 확인 후에만 한다.
+- `resultMode = "review_required"`이면 후보는 보여주되 자동 등록을 막고 재촬영/사용자 확인을 안내한다.
+- `resultMode = "no_candidates"`이면 약품명을 찾지 못한 상태이므로 재촬영 또는 약국/의료진 확인을 안내한다.
+- `needs_confirmation = true`이면 사용자가 반드시 확인해야 한다.
+- `needsUserConfirmation = true`이면 화면 전체에서 “확인 필요” 상태를 표시한다.
+- `confidence`가 낮으면 “인식이 확실하지 않아요”를 표시한다.
+- `match_quality = "none"` 또는 `unmatchedCandidates`가 있으면 자동 등록을 막는다.
+- `warning_message`가 있으면 그대로 사용자에게 보여준다.
+- `medications`가 있으면 효능/복용법/주의사항/보관법을 이 객체에서 표시한다. 값이 `null`이면 프론트에서 추측 문구를 만들지 않는다.
+- `TYLENOL`처럼 브랜드명만 인식된 경우에는 여러 세부 제품이 있을 수 있어 `review_required`가 될 수 있다. `TYLENOL ER`처럼 세부 표기가 잡히면 더 구체적인 후보로 매칭된다.
+- 약품 자동 등록은 하지 말고, 사용자 확인 후 `confirm-medication`을 호출한다.
+
+## 9. 약품 확인 및 현재 복용약 등록
+
+Edge Function:
+
+```text
+POST /functions/v1/confirm-medication
+```
+
+Request Body:
+
+```ts
+type ConfirmMedicationRequest = {
+  detectedMedicationId: string;
+  startDate?: string; // YYYY-MM-DD
+  endDate?: string; // YYYY-MM-DD
+  customName?: string;
+};
+```
+
+Response Body:
+
+```ts
+type ConfirmMedicationResponse = {
+  userMedication: {
+    id: string;
+    user_id: string;
+    medication_id: string;
+    source_scan_id: string | null;
+    custom_name: string | null;
+    start_date: string | null;
+    end_date: string | null;
+    source: "scan" | "caregiver" | "admin" | "manual_confirmed";
+    active: boolean;
+    created_at: string;
+    updated_at: string;
+  };
+};
+```
+
+```ts
+export async function confirmMedication(params: {
+  detectedMedicationId: string;
+  startDate?: string;
+  endDate?: string;
+  customName?: string;
+}) {
+  const { data, error } = await supabase.functions.invoke("confirm-medication", {
+    body: params,
+  });
+
+  if (error) throw error;
+  return data as {
+    userMedication: {
+      id: string;
+      user_id: string;
+      medication_id: string;
+      source_scan_id: string;
+      custom_name: string | null;
+      start_date: string | null;
+      end_date: string | null;
+      source: string;
+      active: boolean;
+    };
+  };
+}
+```
+
+사용 예:
+
+```ts
+await confirmMedication({
+  detectedMedicationId,
+  startDate: new Date().toISOString().slice(0, 10),
+});
+```
+
+## 10. 이미지 삭제
+
+분석이 끝나면 민감 이미지 삭제를 권장한다.
+
+Edge Function:
+
+```text
+POST /functions/v1/delete-scan-image
+```
+
+Request Body:
+
+```ts
+type DeleteScanImageRequest = {
+  scanId: string;
+};
+```
+
+Response Body:
+
+```ts
+type DeleteScanImageResponse = {
+  scanId: string;
+  deleted: boolean;
+};
+```
+
+```ts
+export async function deleteScanImage(scanId: string) {
+  const { data, error } = await supabase.functions.invoke("delete-scan-image", {
+    body: { scanId },
+  });
+
+  if (error) throw error;
+  return data as {
+    scanId: string;
+    deleted: boolean;
+  };
+}
+```
+
+권장 UX:
+
+- OCR/분석 완료 직후 자동 호출
+- 실패 시 조용히 재시도 큐에 넣기
+- 사용자에게 원본 이미지를 장기 보관하지 않는다고 안내
+
+## 11. 챗봇 호출
+
+현재 Gemini 모델:
+
+```text
+gemini-2.5-flash
+```
+
+Edge Function:
+
+```text
+POST /functions/v1/gemini-chat
+```
+
+Request Body:
+
+```ts
+type GeminiChatRequest = {
+  question: string;
+  scanId?: string;
+  chatSessionId?: string;
+};
+```
+
+Response Body:
+
+```ts
+type GeminiChatResponse = {
+  chatSessionId: string;
+  answer: string;
+  safetyLevel: "info" | "caution" | "urgent";
+  needsDoctorOrPharmacist: boolean;
+  citedMedicationIds: string[];
+  citedInteractionIds: string[];
+  disclaimer: string;
+};
+```
+
+```ts
+export async function askMedicationChatbot(params: {
+  question: string;
+  scanId?: string;
+  chatSessionId?: string;
+}) {
+  const { data, error } = await supabase.functions.invoke("gemini-chat", {
+    body: params,
+  });
+
+  if (error) throw error;
+  return data as {
+    chatSessionId: string;
+    answer: string;
+    safetyLevel: "info" | "caution" | "urgent";
+    needsDoctorOrPharmacist: boolean;
+    citedMedicationIds: string[];
+    citedInteractionIds: string[];
+    disclaimer: string;
+  };
+}
+```
+
+사용 예:
+
+```ts
+const result = await askMedicationChatbot({
+  question: "이 약 밥 먹고 바로 먹어도 돼요?",
+  scanId,
+});
+```
+
+응답 예시:
+
+```json
+{
+  "chatSessionId": "chat-uuid",
+  "answer": "현재 정보만으로는 식전 복용 여부를 정확히 알 수 없습니다. 약봉투의 복용법을 다시 확인하거나 약사에게 확인해 주세요.",
+  "safetyLevel": "caution",
+  "needsDoctorOrPharmacist": true,
+  "citedMedicationIds": [],
+  "citedInteractionIds": [],
+  "disclaimer": "이 정보는 참고용이며 AI 답변은 틀릴 수 있습니다. 정확한 복약 방법과 약물 상호작용은 의사 또는 약사에게 확인하세요."
+}
+```
+
+UI 표시 원칙:
+
+- `safetyLevel = "info"`: 일반 안내
+- `safetyLevel = "caution"`: 주의 색상과 약사/의사 상담 안내
+- `safetyLevel = "urgent"`: 강한 경고 UI, 전문가 상담 우선
+- `needsDoctorOrPharmacist = true`이면 답변 하단에 상담 안내를 반드시 표시
+- `disclaimer`는 답변 하단에 표시
+
+답변 화면에 항상 포함할 문구:
+
+```text
+이 정보는 참고용이며, 정확한 복약 방법은 의사 또는 약사에게 확인하세요.
+```
+
+## 12. 복약 일정 관리
+
+Edge Function:
+
+```text
+GET    /functions/v1/medication-schedules
+POST /functions/v1/medication-schedules
+PATCH  /functions/v1/medication-schedules
+DELETE /functions/v1/medication-schedules
+```
+
+### 12.0 일정 조회
+
+Query:
+
+```ts
+type ListMedicationSchedulesQuery = {
+  userMedicationId?: string;
+  active?: "true" | "false";
+};
+```
+
+사용 예:
+
+```ts
+export async function listMedicationSchedules(params?: {
+  userMedicationId?: string;
+  active?: boolean;
+}) {
+  const query = new URLSearchParams();
+  if (params?.userMedicationId) query.set("userMedicationId", params.userMedicationId);
+  if (params?.active !== undefined) query.set("active", String(params.active));
+
+  const { data, error } = await supabase.functions.invoke(
+    `medication-schedules${query.size ? `?${query}` : ""}`,
+    { method: "GET" },
+  );
+
+  if (error) throw error;
+  return data as { schedules: MedicationSchedule[] };
+}
+```
+
+### 12.1 일정 생성
+
+Request Body:
+
+```ts
+type CreateMedicationScheduleRequest = {
+  userMedicationId: string;
+  takeTime: string; // HH:mm:ss
+  timingRule?: "before_meal" | "after_meal" | "with_meal" | "bedtime" | "custom";
+  doseAmount?: number;
+  doseUnit?: string;
+  daysOfWeek?: number[]; // 0=Sunday ... 6=Saturday
+  notificationEnabled?: boolean;
+  startDate?: string; // YYYY-MM-DD, 기본값 오늘
+  endDate?: string | null; // YYYY-MM-DD, 없으면 종료일 없음
+  active?: boolean;
+};
+```
+
+Response Body:
+
+```ts
+type MedicationSchedule = {
+  id: string;
+  user_medication_id: string;
+  take_time: string;
+  timing_rule: "before_meal" | "after_meal" | "with_meal" | "bedtime" | "custom" | null;
+  dose_amount: number | null;
+  dose_unit: string | null;
+  days_of_week: number[];
+  notification_enabled: boolean;
+  start_date: string;
+  end_date: string | null;
+  active: boolean;
+  created_at: string;
+  updated_at: string;
+};
+
+type CreateMedicationScheduleResponse = {
+  schedule: MedicationSchedule;
+};
+```
+
+```ts
+export async function createMedicationSchedule(params: {
+  userMedicationId: string;
+  takeTime: string;
+  timingRule?: "before_meal" | "after_meal" | "with_meal" | "bedtime" | "custom";
+  doseAmount?: number;
+  doseUnit?: string;
+  daysOfWeek?: number[];
+  notificationEnabled?: boolean;
+  startDate?: string;
+  endDate?: string | null;
+  active?: boolean;
+}) {
+  const { data, error } = await supabase.functions.invoke("medication-schedules", {
+    body: params,
+  });
+
+  if (error) throw error;
+  return data;
+}
+```
+
+예시:
+
+```ts
+await createMedicationSchedule({
+  userMedicationId,
+  takeTime: "09:00:00",
+  timingRule: "after_meal",
+  doseAmount: 1,
+  doseUnit: "정",
+  daysOfWeek: [0, 1, 2, 3, 4, 5, 6],
+  startDate: "2026-05-22",
+  endDate: null,
+  notificationEnabled: true,
+});
+```
+
+### 12.2 일정 수정
+
+Request Body:
+
+```ts
+type UpdateMedicationScheduleRequest = {
+  scheduleId: string;
+  takeTime?: string; // HH:mm 또는 HH:mm:ss
+  timingRule?: "before_meal" | "after_meal" | "with_meal" | "bedtime" | "custom";
+  doseAmount?: number | null;
+  doseUnit?: string | null;
+  daysOfWeek?: number[];
+  notificationEnabled?: boolean;
+  startDate?: string;
+  endDate?: string | null;
+  active?: boolean;
+};
+```
+
+사용 예:
+
+```ts
+export async function updateMedicationSchedule(params: UpdateMedicationScheduleRequest) {
+  const { data, error } = await supabase.functions.invoke("medication-schedules", {
+    method: "PATCH",
+    body: params,
+  });
+
+  if (error) throw error;
+  return data as { schedule: MedicationSchedule };
+}
+```
+
+### 12.3 일정 비활성화
+
+삭제는 DB hard delete가 아니라 `active=false`, `notification_enabled=false` 처리다.
+
+```ts
+export async function deactivateMedicationSchedule(scheduleId: string) {
+  const { data, error } = await supabase.functions.invoke("medication-schedules", {
+    method: "DELETE",
+    body: { scheduleId },
+  });
+
+  if (error) throw error;
+  return data as { schedule: MedicationSchedule };
+}
+```
+
+요일 값:
+
+```text
+0 = Sunday
+1 = Monday
+2 = Tuesday
+3 = Wednesday
+4 = Thursday
+5 = Friday
+6 = Saturday
+```
+
+검증 규칙:
+
+- `daysOfWeek`는 0~6 정수만 허용한다.
+- `startDate`는 일정 적용 시작일이다.
+- `endDate`가 있으면 `startDate`보다 빠를 수 없다.
+- 알림 대상 조회는 현재 복용약의 `start_date/end_date`와 일정의 `start_date/end_date/active`를 모두 반영한다.
+
+### 12.4 복약 일정 후보 생성
+
+OCR 원문 또는 공공 DB 복용법에서 알림 일정 후보를 만든다. 이 API는 일정을 바로 생성하지 않는다. 프론트는 후보를 보여주고 사용자가 확인한 뒤 `medication-schedules`를 호출해야 한다.
+
+Edge Function:
+
+```text
+POST /functions/v1/suggest-medication-schedules
+```
+
+Request Body:
+
+```ts
+type SuggestMedicationSchedulesRequest = {
+  userMedicationId: string;
+  scanId?: string;
+};
+```
+
+Response Body:
+
+```ts
+type SuggestMedicationSchedulesResponse = {
+  userMedicationId: string;
+  medicationName: string | null;
+  suggestions: Array<{
+    takeTime: string; // HH:mm:ss
+    timingRule: "before_meal" | "after_meal" | "with_meal" | "bedtime" | "custom";
+    doseAmount: number | null;
+    doseUnit: string | null;
+    daysOfWeek: number[];
+    source: "ocr" | "drug_db" | "fallback";
+    confidence: "high" | "medium" | "low";
+    reason: string;
+  }>;
+  needsUserConfirmation: true;
+  message: string;
+};
+```
+
+사용 예:
+
+```ts
+const { data, error } = await supabase.functions.invoke("suggest-medication-schedules", {
+  body: { userMedicationId, scanId },
+});
+if (error) throw error;
+```
+
+UI 원칙:
+
+- 후보는 “추천”이 아니라 “감지된 일정 후보”로 표시한다.
+- 사용자가 처방전/약봉투 지시와 맞는지 확인해야 한다.
+- 후보가 없으면 직접 시간/요일/용량을 설정하게 한다.
+
+## 13. 복용 완료 체크
+
+Edge Function:
+
+```text
+POST /functions/v1/medication-logs-check
+```
+
+Request Body:
+
+```ts
+type MedicationLogCheckRequest = {
+  userMedicationId: string;
+  scheduleId?: string;
+  plannedDate: string; // YYYY-MM-DD
+  plannedTime?: string; // HH:mm:ss
+  status?: "taken" | "missed" | "skipped";
+};
+```
+
+Response Body:
+
+```ts
+type MedicationLogCheckResponse = {
+  log: {
+    id: string;
+    user_medication_id: string;
+    schedule_id: string | null;
+    planned_date: string;
+    planned_time: string | null;
+    taken_at: string | null;
+    status: "pending" | "taken" | "missed" | "skipped";
+    created_at: string;
+    updated_at: string;
+  };
+};
+```
+
+```ts
+export async function checkMedicationLog(params: {
+  userMedicationId: string;
+  scheduleId?: string;
+  plannedDate: string;
+  plannedTime?: string;
+  status?: "taken" | "missed" | "skipped";
+}) {
+  const { data, error } = await supabase.functions.invoke("medication-logs-check", {
+    body: params,
+  });
+
+  if (error) throw error;
+  return data;
+}
+```
+
+예시:
+
+```ts
+await checkMedicationLog({
+  userMedicationId,
+  scheduleId,
+  plannedDate: "2026-05-22",
+  plannedTime: "09:00:00",
+  status: "taken",
+});
+```
+
+### 13.1 오늘 복약 체크리스트 조회
+
+하루 화면에서 “오늘 먹을 약” 목록을 보여주는 API다. 일정이 적용되는 약만 반환하며, 이미 체크한 로그가 있으면 해당 상태를 같이 반환한다.
+
+Edge Function:
+
+```text
+POST /functions/v1/medication-checklist
+```
+
+Request Body:
+
+```ts
+type MedicationChecklistRequest = {
+  date?: string; // YYYY-MM-DD, 기본값 Asia/Seoul 기준 오늘
+};
+```
+
+Response Body:
+
+```ts
+type MedicationChecklistResponse = {
+  date: string;
+  dayOfWeek: number;
+  summary: {
+    total: number;
+    pending: number;
+    taken: number;
+    missed: number;
+    skipped: number;
+  };
+  items: Array<{
+    scheduleId: string;
+    userMedicationId: string;
+    medicationId: string;
+    medicationName: string | null;
+    entpName: string | null;
+    plannedDate: string;
+    plannedTime: string;
+    timingRule: "before_meal" | "after_meal" | "with_meal" | "bedtime" | "custom" | null;
+    doseAmount: number | null;
+    doseUnit: string | null;
+    status: "pending" | "taken" | "missed" | "skipped";
+    log: Record<string, unknown> | null;
+  }>;
+};
+```
+
+사용 예:
+
+```ts
+const { data, error } = await supabase.functions.invoke("medication-checklist", {
+  body: { date: "2026-05-22" },
+});
+if (error) throw error;
+```
+
+체크 버튼 동작:
+
+- `status = "taken"` 버튼 → `medication-logs-check` 호출
+- `status = "skipped"` 버튼 → `medication-logs-check` 호출
+- 호출 후 `medication-checklist`를 다시 조회해 화면을 갱신한다.
+
+## 14. 상호작용 검사
+
+Edge Function:
+
+```text
+POST /functions/v1/check-interactions
+```
+
+Request Body:
+
+```ts
+type CheckInteractionsRequest = {
+  medicationId: string;
+};
+```
+
+Response Body:
+
+```ts
+type CheckInteractionsResponse = {
+  severity: "contraindicated" | "major" | "moderate" | "minor" | "unknown";
+  overallSeverity: "no_registered_warning" | "caution" | "danger" | "unknown";
+  isConfirmedSafe: boolean;
+  comparedMedicationCount: number;
+  interactions: Array<{
+    id: string;
+    ingredient_a_id: string;
+    ingredient_b_id: string;
+    severity: "contraindicated" | "major" | "moderate" | "minor" | "unknown";
+    description: string;
+    recommendation: string | null;
+    source: string | null;
+    source_url: string | null;
+    updated_at: string;
+  }>;
+  message: string;
+};
+```
+
+```ts
+export async function checkInteractions(medicationId: string) {
+  const { data, error } = await supabase.functions.invoke("check-interactions", {
+    body: { medicationId },
+  });
+
+  if (error) throw error;
+  return data as {
+    severity: "contraindicated" | "major" | "moderate" | "minor" | "unknown";
+    overallSeverity: "no_registered_warning" | "caution" | "danger" | "unknown";
+    isConfirmedSafe: boolean;
+    comparedMedicationCount: number;
+    interactions: unknown[];
+    message: string;
+  };
+}
+```
+
+주의:
+
+- `severity = "unknown"`은 “안전함”이 아니다.
+- `overallSeverity = "no_registered_warning"`은 “현재 DB 기준 등록된 경고 없음”이지, 의학적으로 안전하다는 뜻이 아니다.
+- `comparedMedicationCount = 0`이면 사용자의 현재 복용약이 없어 비교 대상이 없는 상태다.
+- 현재 백엔드는 자동검사만으로 `isConfirmedSafe = true`를 반환하지 않는다.
+- 상호작용 DB에 정보가 부족하다는 뜻일 수 있다.
+- UI에는 “자동 검사 결과만으로 안전을 단정할 수 없습니다”를 표시한다.
+
+## 15. 알림 토큰 등록 및 복약 알림 대상
+
+프론트 앱은 푸시 토큰을 발급받은 뒤 백엔드에 저장한다.
+
+Edge Function:
+
+```text
+POST /functions/v1/notification-tokens
+GET /functions/v1/notification-tokens
+```
+
+Request Body:
+
+```ts
+type SaveNotificationTokenRequest = {
+  token: string;
+  provider?: "fcm" | "apns"; // 현재 실제 발송은 fcm 기준
+  deviceId?: string;
+  platform?: "ios" | "android" | "web";
+  timezone?: string; // 기본값 Asia/Seoul
+  enabled?: boolean;
+};
+```
+
+POST Response Body:
+
+```ts
+type SaveNotificationTokenResponse = {
+  token: {
+    id: string;
+    provider: "fcm" | "apns";
+    device_id: string | null;
+    platform: "ios" | "android" | "web" | null;
+    timezone: string;
+    enabled: boolean;
+    last_seen_at: string;
+    created_at: string;
+  };
+};
+```
+
+GET Response Body:
+
+```ts
+type ListNotificationTokensResponse = {
+  tokens: SaveNotificationTokenResponse["token"][];
+};
+```
+
+```ts
+export async function saveNotificationToken(params: {
+  token: string;
+  provider?: "fcm" | "apns";
+  deviceId?: string;
+  platform?: "ios" | "android" | "web";
+  timezone?: string;
+  enabled?: boolean;
+}) {
+  const { data, error } = await supabase.functions.invoke("notification-tokens", {
+    body: params,
+  });
+
+  if (error) throw error;
+  return data;
+}
+```
+
+운영자 또는 scheduled job용 FCM 알림 발송 함수:
+
+```text
+POST /functions/v1/send-medication-reminders
+```
+
+운영자 admin 계정만 호출할 수 있다.
+
+Request Body:
+
+```ts
+type SendMedicationRemindersRequest = {
+  windowStart?: string; // ISO datetime
+  windowEnd?: string; // ISO datetime
+  targetUserId?: string;
+  dryRun?: boolean;
+  includeReminders?: boolean;
+};
+```
+
+Response Body:
+
+```ts
+type SendMedicationRemindersResponse = {
+  dryRun: boolean;
+  sentCount: number;
+  failedCount: number;
+  skippedCount: number;
+  pendingCount: number;
+  results?: Array<{
+    deliveryId?: string;
+    tokenId: string;
+    ok: boolean;
+    messageId?: string;
+    error?: string;
+    status?: "sent" | "failed" | "skipped";
+  }>;
+  reminders?: Array<Record<string, unknown>>;
+  message: string;
+};
+```
+
+```ts
+export async function sendMedicationReminders(params?: {
+  windowStart?: string;
+  windowEnd?: string;
+  targetUserId?: string;
+  dryRun?: boolean;
+  includeReminders?: boolean;
+}) {
+  const { data, error } = await supabase.functions.invoke("send-medication-reminders", {
+    body: params ?? { dryRun: true },
+  });
+
+  if (error) throw error;
+  return data as {
+    dryRun: boolean;
+    sentCount: number;
+    failedCount: number;
+    skippedCount: number;
+    pendingCount: number;
+    results?: Array<{
+      deliveryId?: string;
+      tokenId: string;
+      ok: boolean;
+      messageId?: string;
+      error?: string;
+      status?: "sent" | "failed" | "skipped";
+    }>;
+    message: string;
+  };
+}
+```
+
+주의:
+
+- 일반 프론트 사용자는 이 함수를 호출하지 않는다.
+- 앱은 `notification-tokens`로 FCM 토큰만 저장한다.
+- 운영자 또는 Supabase scheduled job이 `send-medication-reminders`를 주기적으로 호출한다.
+- `dryRun = true`이면 실제 푸시를 보내지 않고 대상만 계산한다.
+- `dryRun = false`이면 발송 대상을 먼저 `medication_notification_deliveries`에 claim한 뒤 FCM HTTP v1으로 전송한다.
+- 같은 토큰/일정/날짜/시간 조합은 발송 이력으로 중복 전송을 막는다.
+- FCM이 `UNREGISTERED` 또는 invalid token 계열 오류를 반환하면 해당 토큰은 자동 비활성화된다.
+
+## 16. 보호자 연동
+
+Edge Functions:
+
+```text
+POST /functions/v1/caregiver-invite
+POST /functions/v1/caregiver-respond
+GET  /functions/v1/caregiver-status
+```
+
+caregiver-invite Request Body:
+
+```ts
+type CaregiverInviteRequest = {
+  patientUserId?: string;
+  caregiverUserId?: string;
+  permissionScope?: {
+    medication_status?: boolean;
+    scan_results?: boolean;
+    reports?: boolean;
+  };
+};
+```
+
+caregiver-invite Response Body:
+
+```ts
+type CaregiverInviteResponse = {
+  caregiverLink: CaregiverLink;
+  invitedBy: "patient" | "caregiver";
+  nextAction: string;
+};
+
+type CaregiverLink = {
+  id: string;
+  patient_user_id: string;
+  caregiver_user_id: string;
+  status: "invited" | "accepted" | "revoked";
+  permission_scope: Record<string, boolean>;
+  consented_at: string | null;
+  revoked_at: string | null;
+  invited_by_user_id: string | null;
+  created_at: string;
+};
+```
+
+보호자 초대 또는 요청:
+
+```ts
+await supabase.functions.invoke("caregiver-invite", {
+  body: {
+    patientUserId,
+    caregiverUserId,
+    permissionScope: {
+      medication_status: true,
+      scan_results: false,
+      reports: true,
+    },
+  },
+});
+```
+
+caregiver-respond Request Body:
+
+```ts
+type CaregiverRespondRequest = {
+  caregiverLinkId: string;
+  action: "accepted" | "revoked";
+};
+```
+
+caregiver-respond Response Body:
+
+```ts
+type CaregiverRespondResponse = {
+  caregiverLink: CaregiverLink;
+};
+```
+
+승인/철회:
+
+```ts
+await supabase.functions.invoke("caregiver-respond", {
+  body: {
+    caregiverLinkId,
+    action: "accepted", // 또는 "revoked"
+  },
+});
+```
+
+caregiver-status Response Body:
+
+```ts
+type CaregiverStatusResponse = {
+  caregiverLinks: CaregiverLink[];
+  asPatient: CaregiverLink[];
+  asCaregiver: CaregiverLink[];
+};
+```
+
+주의:
+
+- 보호자 권한은 읽기 중심이다.
+- 환자와 보호자 모두 링크 참여자여야 한다.
+- 승인 전에는 보호자가 환자 복약 데이터를 볼 수 없다.
+
+## 17. 복약 히스토리/리포트
+
+Edge Function:
+
+```text
+POST /functions/v1/medication-report
+```
+
+Request Body:
+
+```ts
+type MedicationReportRequest = {
+  patientUserId?: string;
+  startDate: string; // YYYY-MM-DD
+  endDate: string; // YYYY-MM-DD
+};
+```
+
+Response Body:
+
+```ts
+type MedicationReportResponse = {
+  patientUserId: string;
+  startDate: string;
+  endDate: string;
+  daily: Array<{
+    report_date: string;
+    planned_count: number;
+    taken_count: number;
+    missed_count: number;
+    skipped_count: number;
+    adherence_rate: number;
+  }>;
+  summary: string;
+};
+```
+
+```ts
+export async function getMedicationReport(params: {
+  patientUserId?: string;
+  startDate: string;
+  endDate: string;
+}) {
+  const { data, error } = await supabase.functions.invoke("medication-report", {
+    body: params,
+  });
+
+  if (error) throw error;
+  return data as {
+    patientUserId: string;
+    startDate: string;
+    endDate: string;
+    daily: Array<{
+      report_date: string;
+      planned_count: number;
+      taken_count: number;
+      missed_count: number;
+      skipped_count: number;
+      adherence_rate: number;
+    }>;
+    summary: string;
+  };
+}
+```
+
+리포트 문장은 Gemini 추론이 아니라 복약 로그 집계 기반으로 생성된다.
+
+## 18. 직접 조회 가능한 주요 테이블
+
+프론트에서 RLS 범위 안에서 조회 가능한 테이블:
+
+```text
+user_profiles
+scan_sessions
+scan_detected_medications
+user_medications
+medication_schedules
+medication_logs
+chat_sessions
+chat_messages
+medications
+ingredients
+medication_ingredients
+pharmacies
+drug_interactions
+consents
+notification_tokens
+caregiver_links
+```
+
+현재 복용약 조회 예:
+
+```ts
+export async function listActiveUserMedications() {
+  const { data, error } = await supabase
+    .from("user_medications")
+    .select(`
+      id,
+      custom_name,
+      start_date,
+      end_date,
+      active,
+      medications (
+        id,
+        item_name,
+        efficacy,
+        dosage,
+        precautions,
+        storage_method
+      )
+    `)
+    .eq("active", true)
+    .order("created_at", { ascending: false });
+
+  if (error) throw error;
+  return data;
+}
+```
+
+스캔 결과 조회 예:
+
+```ts
+export async function getScanResult(scanId: string) {
+  const { data, error } = await supabase
+    .from("scan_detected_medications")
+    .select(`
+      id,
+      detected_name,
+      matched_name,
+      confidence,
+      needs_confirmation,
+      warning_message,
+      medications (
+        id,
+        item_name,
+        efficacy,
+        dosage,
+        precautions,
+        storage_method
+      )
+    `)
+    .eq("scan_id", scanId)
+    .order("confidence", { ascending: false });
+
+  if (error) throw error;
+  return data;
+}
+```
+
+## 19. 권장 화면 구성
+
+### 19.1 로그인 화면
+
+필수 요소:
+
+- Google 로그인 버튼
+- 개인정보/민감정보 처리 안내
+- “본 서비스는 참고용이며 정확한 복약은 전문가에게 확인” 문구
+
+### 19.2 메인 화면
+
+고령층 타겟이므로 단순하게 구성한다.
+
+필수 요소:
+
+- 큰 카메라 버튼
+- 최근 복용 예정 약
+- 오늘 복용 완료 상태
+- 챗봇 진입 버튼
+
+### 19.3 OCR 진행 화면
+
+상태 단계:
+
+```text
+이미지 업로드 중
+텍스트 인식 중
+약품 정보 확인 중
+결과 준비 완료
+```
+
+실패 상태:
+
+```text
+사진이 흐릿해요. 다시 촬영해 주세요.
+약 이름을 확실히 찾지 못했어요. 약사 또는 의사에게 확인해 주세요.
+```
+
+### 19.4 약품 확인 화면
+
+각 후보 카드에 표시:
+
+- OCR에서 읽은 이름
+- 매칭된 약품명
+- confidence
+- 주요 효능
+- 복용법
+- 주의사항
+- “이 약이 맞아요” 버튼
+- “아니에요/다시 촬영” 버튼
+
+주의:
+
+- confidence가 낮은 약을 자동 등록하지 않는다.
+- `warning_message`가 있으면 카드 상단에 표시한다.
+
+### 19.5 챗봇 화면
+
+필수 요소:
+
+- 사용자 질문 입력
+- AI 답변
+- safety level 표시
+- 면책 문구
+- 전문가 상담 권장 표시
+
+금지:
+
+- 챗봇 답변을 처방처럼 보이게 만들지 않기
+- “복용해도 안전합니다” 같은 단정형 문구를 강하게 디자인하지 않기
+
+## 20. 에러 처리
+
+### 20.1 인증 오류
+
+상태:
+
+```text
+401 Unauthorized
+```
+
+처리:
+
+- 세션 만료로 보고 재로그인 유도
+
+### 20.2 OCR 실패
+
+가능 원인:
+
+- 이미지 없음
+- Storage 업로드 실패
+- OCR API 오류
+- 일일 사용량 초과
+
+처리:
+
+- 재촬영 안내
+- 네트워크 재시도
+- 일정 횟수 이상 실패 시 약사/의사 확인 안내
+
+### 20.3 Gemini 실패
+
+가능 원인:
+
+- quota 초과
+- safety block
+- 네트워크 오류
+
+처리:
+
+- “지금은 답변을 생성하지 못했어요” 표시
+- 약품 기본 정보는 DB 기반으로 계속 보여주기
+- 전문가 상담 안내
+
+### 20.4 약품 매칭 실패
+
+상태:
+
+```text
+detectedMedicationCount = 0
+또는 needs_confirmation = true
+```
+
+처리:
+
+- 다시 촬영 버튼
+- OCR 원문 일부 표시
+- 전문가 확인 안내
+
+## 21. 현재 원격 테스트 결과
+
+2026-05-22 기준:
+
+```text
+Google OAuth 시작: 정상
+DB lint: 정상
+Edge Functions: ACTIVE
+OCR: 정상
+Gemini 챗봇: 정상
+sync-drug-master: 정상
+복약 일정/로그: 정상
+상호작용 검사: 정상
+```
+
+`test_image.jpeg` OCR 결과:
+
+```text
+confidence: 0.6132253799999999
+ocrTextLength: 15
+ocrPreview:
+#8888
+DRIVE
+L
+0
+```
+
+이 이미지는 실제 약봉투/처방전이 아니어서 약품 인식 품질 검증용으로는 부족하다. 실제 약봉투 또는 처방전 샘플 이미지로 추가 테스트가 필요하다.
+
+Gemini 테스트 결과:
+
+```text
+question: 타이레놀은 식후에 먹어야 하나요?
+answer: 타이레놀은 식사와 관계없이 드실 수 있습니다. 빈속에 드셔도 괜찮고, 속이 불편하시면 식사 후에 드셔도 좋습니다.
+safetyLevel: info
+needsDoctorOrPharmacist: false
+```
+
+## 22. 프론트 작업자가 주의할 보안 사항
+
+- service role key를 절대 사용하지 않는다.
+- Google/Gemini/API key를 프론트에 넣지 않는다.
+- 이미지는 private bucket에만 업로드한다.
+- 이미지 분석 후 삭제 함수를 호출한다.
+- 사용자가 확인하지 않은 약을 현재 복용약으로 등록하지 않는다.
+- 챗봇 답변을 의학적 확정 판단처럼 보여주지 않는다.
+- 보호자 기능은 동의 플로우가 준비되기 전까지 노출하지 않는다.
+
+## 23. 프론트 작업자가 백엔드에 요청해야 할 수 있는 추가 개선
+
+현재 구현으로 MVP 연동은 가능하지만, 실제 제품 품질을 위해 다음 개선이 필요할 수 있다.
+
+- OCR 결과가 낮은 confidence일 때 더 친절한 실패 코드 반환
+- 약품 후보 매칭 알고리즘 개선
+- 실제 약봉투 이미지 기반 테스트셋 구축
+- 앱 배포 후 실제 단말 FCM 수신 검증
+- 오래된 OCR/채팅 민감정보 정리 scheduled job 운영 설정
+- 보호자 알림 발송
+- 챗봇 답변에 더 명확한 citation 구조 제공
