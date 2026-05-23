@@ -534,11 +534,25 @@ MVP에서는 광고 기능 제외
 운영자가 해야 할 일:
 
 - 약품 마스터 동기화는 `sync-drug-master`로 수행
+- OCR 분석 중 내부 DB에 없는 약품 후보는 `analyze-medication`이 공공 의약품 API를 제한적으로 조회해 cache-aside 저장
+- 공공 의약품 API 장애가 나도 프론트에는 내부 DB 기준 분석 결과가 반환되므로, `publicLookup.status`를 운영 로그에서 확인
+- OCR 약국 정보는 OCR 텍스트 기반으로 `pharmacies`에 저장된다. 공공 약국 DB 검증/지도 연동은 후순위
 - DUR 병용금기 동기화는 `sync-dur-interactions`로 수행
 - `drug_interactions.source = 'mfds_dur_usjnt_taboo'` 데이터가 주기적으로 늘거나 갱신되는지 확인
 - 동기화 실패 시 프론트에는 “상호작용 DB 기준 등록된 경고 없음”과 “안전함”을 혼동하지 않도록 유지
-- 현재 `sync-dur-interactions` 원격 호출에서 공공 API가 `Unexpected errors` 비 JSON 응답을 반환했다.
-- 운영자는 공공데이터포털에서 `DURPrdlstInfoService02/getUsjntTabooInfoList02` 활용신청, 승인 상태, 서비스키 권한을 확인해야 한다.
+- `sync-dur-interactions`는 최신 명세 기준 `DURPrdlstInfoService03/getUsjntTabooInfoList03`를 사용한다.
+- `sync-dur-interactions` 원격 재테스트에서 `apiItemCount=1`, `insertedOrUpdatedCount=1`로 성공했다.
+- 운영자는 공공데이터포털에서 `DURPrdlstInfoService03/getUsjntTabooInfoList03` 활용신청, 승인 상태, 서비스키 권한을 확인해야 한다.
+- 상호작용 질문은 `gemini-chat`이 먼저 내부 DB 근거를 확인한다. 공식 DB 매칭 약이 2개 미만이거나 성분 정보가 없으면 Gemini 추론을 사용하지 않고 “답할 수 없음/전문가 확인”으로 차단한다.
+
+권장 운영 주기:
+
+- `sync-drug-master`: 초기 적재 후 매일 또는 주 1회 주요 약품 page batch 실행
+- `sync-dur-interactions`: `syncKnownMedications=true`로 매일 1회 또는 최소 주 1회 실행
+- `sync-dur-interactions`는 `medications.item_seq`가 있는 기존 약품을 batch로 읽고, 각 약품의 `itemSeq` 기준 DUR 병용금기를 적재한다.
+- batch는 `medicationLimit`과 `medicationOffset`으로 나눠 실행한다. 한 번에 너무 크게 돌리지 말고 20~50개 단위로 시작한다.
+- `analyze-medication`: 사용자 OCR 흐름에서 내부 DB에 없는 약품 후보를 즉시 cache-aside 저장
+- `gemini-chat`: 상호작용 DB에 근거가 없으면 안전하다고 답하지 않음
 
 제외 또는 후순위:
 

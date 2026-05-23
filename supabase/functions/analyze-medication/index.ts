@@ -1,6 +1,7 @@
 import { handleCors } from "../_shared/cors.ts";
+import { fetchDrugItemsByName, upsertDrugApiItems } from "../_shared/drug_master.ts";
 import { errorResponse, HttpError, json, readJson } from "../_shared/http.ts";
-import { requireUser } from "../_shared/supabase.ts";
+import { logApiUsage, requireUser } from "../_shared/supabase.ts";
 
 type RequestBody = {
   scanId: string;
@@ -43,6 +44,28 @@ type DetectedMedicationRow = {
 };
 
 type ResultMode = "ready" | "review_required" | "no_candidates";
+
+type PublicLookupStatus = "not_needed" | "succeeded" | "partial" | "failed" | "skipped_low_confidence";
+
+type PublicLookupResult = {
+  attempted: boolean;
+  status: PublicLookupStatus;
+  queriedCandidates: string[];
+  insertedMedicationCount: number;
+  message: string;
+  forceConfirmationCandidates: Set<string>;
+};
+
+function defaultPublicLookup(status: PublicLookupStatus, message: string): PublicLookupResult {
+  return {
+    attempted: false,
+    status,
+    queriedCandidates: [],
+    insertedMedicationCount: 0,
+    message,
+    forceConfirmationCandidates: new Set(),
+  };
+}
 
 function matchQuality(confidence: number, hasMatch: boolean): "high" | "medium" | "low" | "none" {
   if (!hasMatch) return "none";
@@ -169,6 +192,116 @@ function isBroadLatinBrand(candidate: string): boolean {
   return /^[A-Z][A-Z0-9-]{3,}$/.test(candidate);
 }
 
+function isPublicLookupCandidate(candidate: string): boolean {
+  const trimmed = candidate.trim();
+  if (trimmed.length < 3 || trimmed.length > 80) return false;
+  if (/^\d+$/.test(trimmed)) return false;
+  if (/(아침|점심|저녁|식후|식전|복용|처방|약국|전화|주의|보관|용법|용량)/.test(trimmed)) return false;
+  if (/(정|캡슐|시럽|액|연고|크림|겔|패취|산|과립|점안액|mg|ml|밀리그램|밀리리터)/i.test(trimmed)) return true;
+  if (/^[A-Z][A-Z0-9-]{3,}(?:\s+[A-Z0-9-]{2,})?$/.test(trimmed)) return true;
+  return /[가-힣]{2,}/.test(trimmed);
+}
+
+function timeoutSignal(ms: number): AbortSignal {
+  const controller = new AbortController();
+  setTimeout(() => controller.abort("timeout"), ms);
+  return controller.signal;
+}
+
+async function loadMatches(
+  serviceClient: any,
+  candidates: string[],
+): Promise<Map<string, MedicationCandidateMatch>> {
+  const { data: matches, error: matchError } = candidates.length > 0
+    ? await serviceClient
+      .rpc("find_medication_candidates_bulk", {
+        search_texts: candidates,
+        max_results: 1,
+      })
+    : { data: [], error: null };
+
+  if (matchError) throw new HttpError(500, "Failed to match medication candidates", matchError);
+
+  const bestByCandidate = new Map<string, MedicationCandidateMatch>();
+  for (const match of (matches ?? []) as MedicationCandidateMatch[]) {
+    if (!bestByCandidate.has(match.search_text)) {
+      bestByCandidate.set(match.search_text, match);
+    }
+  }
+  return bestByCandidate;
+}
+
+async function runPublicDrugLookup(
+  serviceClient: any,
+  candidates: string[],
+  bestByCandidate: Map<string, MedicationCandidateMatch>,
+  ocrConfidence: number | null,
+): Promise<PublicLookupResult> {
+  const unmatched = candidates.filter((candidate) => !bestByCandidate.has(candidate));
+  if (unmatched.length === 0) {
+    return defaultPublicLookup("not_needed", "내부 의약품 DB에서 후보를 찾았습니다. 공공 API 추가 조회가 필요하지 않습니다.");
+  }
+  if (ocrConfidence !== null && ocrConfidence < 0.65) {
+    return defaultPublicLookup("skipped_low_confidence", "OCR 신뢰도가 낮아 공공 의약품 API 자동 조회를 건너뛰었습니다.");
+  }
+
+  const lookupCandidates = unmatched.filter(isPublicLookupCandidate).slice(0, 5);
+  if (lookupCandidates.length === 0) {
+    return defaultPublicLookup("not_needed", "공공 API 조회 조건을 만족하는 약품 후보가 없습니다.");
+  }
+
+  const startedAt = Date.now();
+  const overallTimeoutMs = 8000;
+  let insertedMedicationCount = 0;
+  let successCount = 0;
+  let failureCount = 0;
+  const forceConfirmationCandidates = new Set<string>();
+
+  for (const candidate of lookupCandidates) {
+    const remaining = overallTimeoutMs - (Date.now() - startedAt);
+    if (remaining <= 0) {
+      failureCount += 1;
+      break;
+    }
+
+    try {
+      const items = await fetchDrugItemsByName(candidate, {
+        numOfRows: 10,
+        signal: timeoutSignal(Math.min(4000, remaining)),
+      });
+      if (items.length !== 1) {
+        forceConfirmationCandidates.add(candidate);
+      }
+      const upsertResult = await upsertDrugApiItems(serviceClient, items);
+      insertedMedicationCount += upsertResult.medicationCount;
+      successCount += 1;
+    } catch {
+      failureCount += 1;
+    }
+  }
+
+  const status: PublicLookupStatus = insertedMedicationCount > 0 && failureCount > 0
+    ? "partial"
+    : insertedMedicationCount > 0
+    ? "succeeded"
+    : failureCount > 0 && successCount === 0
+    ? "failed"
+    : "succeeded";
+
+  return {
+    attempted: true,
+    status,
+    queriedCandidates: lookupCandidates,
+    insertedMedicationCount,
+    message: status === "failed"
+      ? "공공 의약품 API 조회에 실패했습니다. 내부 DB 기준 결과만 반환합니다."
+      : insertedMedicationCount > 0
+      ? "공공 의약품 API에서 찾은 약품 정보를 저장하고 다시 매칭했습니다."
+      : "공공 의약품 API 조회는 완료됐지만 추가로 저장할 약품을 찾지 못했습니다.",
+    forceConfirmationCandidates,
+  };
+}
+
 Deno.serve(async (req) => {
   const cors = handleCors(req);
   if (cors) return cors;
@@ -183,7 +316,7 @@ Deno.serve(async (req) => {
 
     const { data: scan, error: scanError } = await serviceClient
       .from("scan_sessions")
-      .select("id,user_id,ocr_text")
+      .select("id,user_id,ocr_text,confidence")
       .eq("id", body.scanId)
       .eq("user_id", user.id)
       .maybeSingle();
@@ -195,21 +328,24 @@ Deno.serve(async (req) => {
     const candidates = extractCandidates(scan.ocr_text);
     const detectedRows = [];
     const unmatchedCandidates: string[] = [];
-    const { data: matches, error: matchError } = candidates.length > 0
-      ? await serviceClient
-        .rpc("find_medication_candidates_bulk", {
-          search_texts: candidates,
-          max_results: 1,
-        })
-      : { data: [], error: null };
-
-    if (matchError) throw new HttpError(500, "Failed to match medication candidates", matchError);
-
-    const bestByCandidate = new Map<string, MedicationCandidateMatch>();
-    for (const match of (matches ?? []) as MedicationCandidateMatch[]) {
-      if (!bestByCandidate.has(match.search_text)) {
-        bestByCandidate.set(match.search_text, match);
-      }
+    let bestByCandidate = await loadMatches(serviceClient, candidates);
+    const publicLookup = await runPublicDrugLookup(
+      serviceClient,
+      candidates,
+      bestByCandidate,
+      typeof scan.confidence === "number" ? scan.confidence : null,
+    );
+    if (publicLookup.insertedMedicationCount > 0) {
+      bestByCandidate = await loadMatches(serviceClient, candidates);
+    }
+    if (publicLookup.attempted) {
+      await logApiUsage(serviceClient, {
+        userId: user.id,
+        provider: "data_go_kr",
+        endpoint: "getDrugPrdtPrmsnDtlInq06:cache-aside",
+        status: publicLookup.status === "failed" ? "failed" : "succeeded",
+        requestCount: Math.max(publicLookup.queriedCandidates.length, 1),
+      });
     }
 
     for (const candidate of candidates) {
@@ -217,9 +353,12 @@ Deno.serve(async (req) => {
       const confidence = best?.similarity_score ?? 0;
       const isExact = best?.item_name === candidate || best?.edi_code === candidate || best?.match_source === "exact";
       const matchSource = best?.match_source ?? (isExact ? "exact" : best ? "fuzzy" : "none");
+      const forcePublicConfirmation = publicLookup.forceConfirmationCandidates.has(candidate);
       const needsBrandConfirmation = Boolean(best) &&
-        (best?.alias_requires_confirmation ?? (!isExact && isBroadLatinBrand(candidate)));
-      const quality = needsBrandConfirmation ? "medium" : matchQuality(isExact ? 1 : confidence, Boolean(best));
+        (forcePublicConfirmation || (best?.alias_requires_confirmation ?? (!isExact && isBroadLatinBrand(candidate))));
+      const quality = needsBrandConfirmation || forcePublicConfirmation
+        ? "medium"
+        : matchQuality(isExact ? 1 : confidence, Boolean(best));
       if (!best) unmatchedCandidates.push(candidate);
 
       if (best || candidate.length >= 3) {
@@ -231,9 +370,11 @@ Deno.serve(async (req) => {
           confidence: isExact ? 1 : Math.min(Math.max(confidence, 0), 0.99),
           match_method: matchSource,
           match_quality: quality,
-          needs_confirmation: needsBrandConfirmation || (!isExact && confidence < 0.82),
+          needs_confirmation: forcePublicConfirmation || needsBrandConfirmation || (!isExact && confidence < 0.82),
           warning_message: !best
             ? "공식 의약품 DB에서 확실한 매칭을 찾지 못했습니다. 약사 또는 의사에게 확인하세요."
+            : forcePublicConfirmation
+            ? "공공 의약품 DB에서 여러 후보가 확인되었습니다. 사용자가 세부 제품명, 함량, 제형을 확인해야 합니다."
             : needsBrandConfirmation
             ? "브랜드명만으로는 여러 제품이 있을 수 있습니다. 포장에 적힌 세부 제품명, 함량, 제형을 사용자가 확인해야 합니다."
             : null,
@@ -297,6 +438,13 @@ Deno.serve(async (req) => {
       needsUserConfirmation: resultMode !== "ready",
       autoDisplayReady: resultMode === "ready",
       informationAvailability,
+      publicLookup: {
+        attempted: publicLookup.attempted,
+        status: publicLookup.status,
+        queriedCandidates: publicLookup.queriedCandidates,
+        insertedMedicationCount: publicLookup.insertedMedicationCount,
+        message: publicLookup.message,
+      },
       recommendedAction: recommendedActionForMode(resultMode),
     });
   } catch (error) {

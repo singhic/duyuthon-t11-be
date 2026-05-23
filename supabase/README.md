@@ -175,9 +175,13 @@ FCM 전송 조건:
 2026-05-22 부족 항목 보강:
 
 - OCR 응답에 `needsManualReview`, `failureReason`, `recommendedAction`, `pharmacyContact` 추가
+- OCR은 `jpg`, `jpeg`, `png`만 처리하도록 제한하고, 그 외 형식은 `unsupported_image_type`으로 차단
+- OCR 약국 후보는 `pharmacies`에 저장하고 `scan_sessions.pharmacy_id`, `scan_sessions.pharmacy_contact`에 연결
 - OCR 결과 저신뢰도/빈 텍스트 상태를 `scan_sessions`에 저장
 - `medications`에 `administration_timing`, `information_completeness` 추가
 - `sync-drug-master`가 효능, 복용법, 주의사항, 보관법, 식전/식후 추정 정보를 저장하도록 보강
+- 공공 의약품 API 파싱/upsert 로직을 `_shared/drug_master.ts`로 분리
+- `analyze-medication`은 내부 DB 매칭 실패 후보에 대해 공공 의약품 API를 제한적으로 조회하고, 찾은 약품을 저장한 뒤 같은 요청에서 재매칭
 - `drug_interactions` 성분 pair 정규화 trigger 추가
 - `check_interactions_for_medications` RPC 추가
 - `check-interactions` 응답에 `overallSeverity`, `isConfirmedSafe` 추가
@@ -203,9 +207,10 @@ FCM 전송 조건:
   - 기본 `dryRun=true`
   - 만료된 OCR 원문, OCR 원본 JSON, 챗봇 메시지 본문을 삭제/마스킹
 - `sync-dur-interactions` 운영 함수 추가
-  - 식품의약품안전처 DUR 병용금기 API(`getUsjntTabooInfoList02`) 기반
+  - 식품의약품안전처 DUR 병용금기 API(`getUsjntTabooInfoList03`) 기반
   - `drug_interactions`에 `source=mfds_dur_usjnt_taboo`로 저장
   - 공공 API 응답을 `raw_source`에 남겨 추적 가능
+  - `syncKnownMedications=true` 모드로 이미 적재된 `medications.item_seq` 기준 batch 동기화 가능
 - `suggest-medication-schedules` 함수 추가
   - OCR 원문 또는 공공 DB 복용법에서 일정 후보 생성
   - 자동 등록하지 않고 사용자 확인 후 `medication-schedules` 호출
@@ -222,9 +227,13 @@ FCM 전송 조건:
 ### 4.1 이미지 OCR 분석
 
 1. 클라이언트가 `prescription-temp` private bucket에 이미지를 업로드한다.
+   - MVP OCR 직접 지원 형식은 `image/jpeg`, `image/png`다.
+   - WebP/HEIC는 프론트에서 JPEG/PNG로 변환 후 업로드한다.
 2. 클라이언트가 `scan_sessions`에 `image_path`를 저장한다.
 3. `google-ocr` 함수를 호출한다.
 4. `analyze-medication` 함수를 호출한다.
+   - 내부 DB에 없는 후보는 공공 의약품 API cache-aside 조회 후 저장될 수 있다.
+   - 공공 API 실패 시에도 내부 DB 기준 분석 결과는 반환한다.
 5. 사용자가 후보 약품을 확인하면 `confirm-medication`을 호출한다.
 6. 결과 확인 후 필요하면 `delete-scan-image`를 호출한다.
 
@@ -281,6 +290,19 @@ FCM 푸시 토큰 등록:
   "windowEnd": "2026-05-22T09:15:00+09:00"
 }
 ```
+
+운영자 DUR batch 동기화:
+
+```json
+{
+  "syncKnownMedications": true,
+  "medicationLimit": 20,
+  "medicationOffset": 0,
+  "maxDurRowsPerMedication": 100
+}
+```
+
+`medicationOffset`을 증가시키며 여러 번 실행하면 `sync-drug-master` 또는 OCR cache-aside로 적재된 약품에 대해 DUR 병용금기 정보도 따라 적재된다.
 
 `dryRun=false` 실제 발송 시 같은 `notification_token_id + schedule_id + planned_date + planned_time` 조합은 한 번만 claim된다. 스케줄러가 같은 시간대를 반복 호출해도 동일 알림이 중복 전송되지 않도록 `medication_notification_deliveries`에 발송 결과를 남긴다.
 

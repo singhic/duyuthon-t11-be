@@ -210,11 +210,11 @@ pharmacies
 - `ingredients`: 성분명
 - `medication_ingredients`: 약품과 성분 연결
 - `drug_interactions`: 성분 간 상호작용
-- `pharmacies`: 약국 정보
+- `pharmacies`: OCR 기반 처방 약국 후보와 추후 약국 마스터 연동용 정보
 
 현재 구현 수준:
 
-- 공공데이터 동기화로 약품과 성분을 채울 수 있다.
+- 공공데이터 동기화와 `analyze-medication` cache-aside 조회로 약품과 성분을 채울 수 있다.
 - 약품 상세 필드는 `efficacy`, `dosage`, `precautions`, `storage_method`, `administration_timing`, `information_completeness`까지 확장되어 있다.
 - `medication_aliases`는 `alias_type`, `requires_confirmation`, `priority`를 가진다.
 - 넓은 브랜드명은 확인 필요, 구체 브랜드명은 자동 표시 가능하도록 DB에서 정책을 관리한다.
@@ -301,16 +301,18 @@ supabase/functions/google-ocr/index.ts
 4. scan_sessions에서 본인 scanId와 image_path 조회
 5. ocr_jobs row 생성, status=processing
 6. scan_sessions.status=ocr_processing
-7. Storage prescription-temp에서 이미지 다운로드
-8. 이미지를 base64로 변환
-9. Google Vision OCR 호출
-10. 원본 이미지 삭제
-11. OCR 텍스트에서 약국명/전화번호 후보 추출
-12. OCR confidence 기준으로 수동 확인 필요 여부 판단
-13. ocr_jobs.status=succeeded 저장
-14. scan_sessions에 ocr_text, confidence, review_status, failure_reason 저장
-15. api_usage_logs에 성공 기록
-16. 프론트에 OCR 결과 반환
+7. image_path 확장자가 jpg/jpeg/png인지 확인
+8. Storage prescription-temp에서 이미지 다운로드
+9. 이미지를 base64로 변환
+10. Google Vision OCR 호출
+11. 원본 이미지 삭제
+12. OCR 텍스트에서 약국명/전화번호/주소 후보 추출
+13. 약국 후보가 있으면 pharmacies에 upsert하고 scan_sessions.pharmacy_id 연결
+14. OCR confidence 기준으로 수동 확인 필요 여부 판단
+15. ocr_jobs.status=succeeded 저장
+16. scan_sessions에 ocr_text, confidence, review_status, failure_reason, pharmacy_contact 저장
+17. api_usage_logs에 성공 기록
+18. 프론트에 OCR 결과 반환
 ```
 
 저신뢰도 판단:
@@ -340,7 +342,7 @@ api_usage_logs.status=failed
 제한:
 
 - OCR 품질은 실제 약봉투/처방전 테스트셋으로 더 검증해야 한다.
-- 약국명/전화번호 추출은 정규식 기반이라 완벽하지 않다.
+- 약국명/전화번호/주소 추출은 정규식 기반이라 완벽하지 않다. 공공 약국 DB 보정은 후속 단계다.
 
 ## 6. 약품 후보 분석 로직
 
@@ -366,11 +368,14 @@ supabase/functions/analyze-medication/index.ts
 3. OCR 텍스트 정규화
 4. 약품명처럼 보이는 후보 추출
 5. find_medication_candidates_bulk RPC로 후보 일괄 매칭
-6. 후보별 best match 계산
-7. scan_detected_medications 기존 row 삭제
-8. 새 후보 row 저장
-9. scan_sessions.status=completed, completed_at 저장
-10. candidates, detectedMedications, matchQuality 반환
+6. 내부 DB에서 매칭되지 않은 후보 중 조건을 만족하는 후보만 공공 의약품 API 조회
+7. 조회된 약품을 medications, ingredients, medication_ingredients에 upsert
+8. 저장된 약품까지 포함해 find_medication_candidates_bulk 재매칭
+9. 후보별 best match 계산
+10. scan_detected_medications 기존 row 삭제
+11. 새 후보 row 저장
+12. scan_sessions.status=completed, completed_at 저장
+13. candidates, detectedMedications, matchQuality, publicLookup 반환
 ```
 
 후보 추출 기준:

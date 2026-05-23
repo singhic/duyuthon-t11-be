@@ -19,6 +19,10 @@ type ScanSession = {
 type PharmacyContact = {
   name: string | null;
   phone: string | null;
+  address: string | null;
+  rawLine: string | null;
+  confidence: "high" | "medium" | "low";
+  source: "ocr";
 };
 
 function errorMessage(error: unknown): string {
@@ -35,20 +39,54 @@ function normalizePhone(value: string): string {
   return digits.replace(/^(\d{2,3})(\d{3,4})(\d{4})$/, "$1-$2-$3");
 }
 
+function normalizePhoneDigits(value: string | null): string | null {
+  if (!value) return null;
+  const digits = value.replace(/[^\d]/g, "");
+  return digits.length >= 7 ? digits : null;
+}
+
+function normalizePharmacyName(value: string | null): string | null {
+  if (!value) return null;
+  const normalized = value.replace(/\s+/g, "").toLowerCase();
+  return normalized || null;
+}
+
+function stripPhoneFromLine(line: string): string {
+  return line.replace(/(?:전화|TEL|Tel|tel|T\.?)?[:\s-]*(?:0\d{1,2}[-.\s]?)?\d{3,4}[-.\s]?\d{4}/g, "").trim();
+}
+
+function looksLikeAddress(line: string): boolean {
+  return /(특별시|광역시|도\s|시\s|군\s|구\s|읍\s|면\s|동\s|로\s|길\s|번지|층)/.test(line);
+}
+
 function extractPharmacyContact(text: string): PharmacyContact | null {
   const lines = text
     .split(/\r?\n/)
     .map((line) => line.trim())
     .filter(Boolean);
   const phoneMatch = text.match(/(?:0\d{1,2}[-.\s]?)?\d{3,4}[-.\s]?\d{4}/);
-  const pharmacyLine = lines.find((line) => /약국|약방/.test(line));
+  const pharmacyLineIndex = lines.findIndex((line) => /약국|약방/.test(line));
+  const pharmacyLine = pharmacyLineIndex >= 0 ? lines[pharmacyLineIndex] : null;
   const name = pharmacyLine
-    ? pharmacyLine.replace(/(?:전화|TEL|Tel|tel|T\.?)[:\s-]*.*$/g, "").trim()
+    ? stripPhoneFromLine(pharmacyLine).replace(/(?:전화|TEL|Tel|tel|T\.?)[:\s-]*.*$/g, "").trim()
     : null;
   const phone = phoneMatch ? normalizePhone(phoneMatch[0]) : null;
+  const nearbyLines = pharmacyLineIndex >= 0
+    ? lines.slice(Math.max(0, pharmacyLineIndex - 2), pharmacyLineIndex + 3)
+    : lines;
+  const address = nearbyLines.find((line) => looksLikeAddress(line) && !/약국|약방/.test(line)) ?? null;
+  const rawLine = pharmacyLine ?? lines.find((line) => phoneMatch && line.includes(phoneMatch[0])) ?? null;
+  const confidence = name && phone ? "high" : name || phone ? "medium" : "low";
 
   if (!name && !phone) return null;
-  return { name: name || null, phone };
+  return {
+    name: name || null,
+    phone,
+    address,
+    rawLine,
+    confidence,
+    source: "ocr",
+  };
 }
 
 function classifyOcrResult(text: string, confidence: number | null): {
@@ -145,6 +183,50 @@ async function restInsertSingle<T>(table: string, payload: unknown): Promise<T> 
   }
 
   return body as T;
+}
+
+async function upsertOcrPharmacy(contact: PharmacyContact | null): Promise<string | null> {
+  if (!contact) return null;
+
+  const normalizedName = normalizePharmacyName(contact.name);
+  const normalizedPhone = normalizePhoneDigits(contact.phone);
+  if (!normalizedName && !normalizedPhone) return null;
+
+  const filters = [
+    normalizedName
+      ? `normalized_name=eq.${encodeURIComponent(normalizedName)}`
+      : "normalized_name=is.null",
+    normalizedPhone
+      ? `normalized_phone=eq.${encodeURIComponent(normalizedPhone)}`
+      : "normalized_phone=is.null",
+  ].join("&");
+  const payload = {
+    name: contact.name ?? contact.phone ?? "OCR 약국 정보",
+    phone: contact.phone,
+    address: contact.address,
+    source: "ocr",
+    raw_source: contact,
+    source_updated_at: new Date().toISOString(),
+  };
+  const existing = await restSelectSingle<{ id: string }>(
+    `pharmacies?select=id&${filters}`,
+  );
+
+  if (existing) {
+    await restPatch("pharmacies", `id=eq.${encodeURIComponent(existing.id)}`, payload);
+    return existing.id;
+  }
+
+  try {
+    const inserted = await restInsertSingle<{ id: string }>("pharmacies", payload);
+    return inserted.id;
+  } catch (error) {
+    const retried = await restSelectSingle<{ id: string }>(
+      `pharmacies?select=id&${filters}`,
+    );
+    if (retried) return retried.id;
+    throw error;
+  }
 }
 
 async function restPatch(table: string, query: string, payload: unknown): Promise<void> {
@@ -250,6 +332,15 @@ async function downloadImage(path: string): Promise<Blob> {
   return await response.blob();
 }
 
+function validateSupportedImagePath(path: string): void {
+  if (!/\.(jpe?g|png)$/i.test(path)) {
+    throw new HttpError(400, "unsupported_image_type", {
+      message: "jpg, jpeg, png 이미지만 OCR 처리할 수 있습니다.",
+      allowedExtensions: ["jpg", "jpeg", "png"],
+    });
+  }
+}
+
 async function removeImage(path: string): Promise<boolean> {
   const encodedPath = path.split("/").map((part) => encodeURIComponent(part)).join("/");
   const response = await fetch(
@@ -261,6 +352,20 @@ async function removeImage(path: string): Promise<boolean> {
   );
 
   return response.ok;
+}
+
+function failureReasonFromError(error: unknown): string {
+  if (error instanceof HttpError && error.message === "unsupported_image_type") {
+    return "unsupported_image_type";
+  }
+  return "ocr_request_failed";
+}
+
+function recommendedActionFromError(error: unknown): string {
+  if (error instanceof HttpError && error.message === "unsupported_image_type") {
+    return "jpg, jpeg, png 이미지만 OCR 처리할 수 있습니다. 지원 형식으로 다시 업로드해 주세요.";
+  }
+  return "OCR 처리에 실패했습니다. 처방 약국 또는 의료진에게 복약 정보를 확인하세요.";
 }
 
 Deno.serve(async (req) => {
@@ -291,6 +396,7 @@ Deno.serve(async (req) => {
     if (!scan) throw new HttpError(404, "Scan session not found");
     if (!scan.image_path) throw new HttpError(400, "Scan session has no image_path");
     imagePath = scan.image_path;
+    validateSupportedImagePath(scan.image_path);
 
     const job = await restInsertSingle<{ id: string }>(
       "ocr_jobs",
@@ -311,6 +417,7 @@ Deno.serve(async (req) => {
     const ocr = await runGoogleOcr(imageBase64);
     const imageDeleted = await removeImage(scan.image_path);
     const pharmacyContact = extractPharmacyContact(ocr.text);
+    const pharmacyId = await upsertOcrPharmacy(pharmacyContact);
     const review = classifyOcrResult(ocr.text, ocr.confidence);
 
     await restPatch(
@@ -334,6 +441,7 @@ Deno.serve(async (req) => {
         review_status: review.needsManualReview ? "needed" : "not_needed",
         failure_reason: review.failureReason,
         recommended_action: review.recommendedAction,
+        pharmacy_id: pharmacyId,
         pharmacy_contact: pharmacyContact,
         ocr_quality: {
           confidence: ocr.confidence,
@@ -368,7 +476,7 @@ Deno.serve(async (req) => {
         `id=eq.${encodeURIComponent(jobId)}`,
         {
           status: "failed",
-          failure_reason: "ocr_request_failed",
+          failure_reason: failureReasonFromError(error),
           error_message: message,
           finished_at: new Date().toISOString(),
         },
@@ -381,8 +489,8 @@ Deno.serve(async (req) => {
         {
           status: "failed",
           review_status: "needed",
-          failure_reason: "ocr_request_failed",
-          recommended_action: "OCR 처리에 실패했습니다. 처방 약국 또는 의료진에게 복약 정보를 확인하세요.",
+          failure_reason: failureReasonFromError(error),
+          recommended_action: recommendedActionFromError(error),
           error_message: message,
         },
       );

@@ -271,6 +271,10 @@ export async function uploadPrescriptionImage(file: File) {
   if (!user) throw new Error("로그인이 필요합니다.");
 
   const scanId = crypto.randomUUID();
+  if (!["image/jpeg", "image/png"].includes(file.type)) {
+    throw new Error("jpg, jpeg, png 이미지만 업로드할 수 있습니다.");
+  }
+
   const ext = file.type === "image/png" ? "png" : "jpeg";
   const imagePath = `${user.id}/${scanId}/original.${ext}`;
 
@@ -303,8 +307,9 @@ export async function uploadPrescriptionImage(file: File) {
 ```text
 image/jpeg
 image/png
-image/webp
 ```
+
+`image/webp`, `image/heic`는 MVP OCR 직접 지원 대상이 아니다. 프론트에서 `jpeg` 또는 `png`로 변환한 뒤 업로드한다.
 
 현재 Storage 파일 제한:
 
@@ -337,11 +342,15 @@ type GoogleOcrResponse = {
   confidence: number | null;
   imageDeleted: boolean;
   needsManualReview: boolean;
-  failureReason: "empty_ocr_text" | "low_ocr_confidence" | "ocr_request_failed" | null;
+  failureReason: "empty_ocr_text" | "low_ocr_confidence" | "ocr_request_failed" | "unsupported_image_type" | null;
   recommendedAction: string;
   pharmacyContact: {
     name: string | null;
     phone: string | null;
+    address: string | null;
+    rawLine: string | null;
+    confidence: "high" | "medium" | "low";
+    source: "ocr";
   } | null;
   next: string;
 };
@@ -364,7 +373,14 @@ export async function runOcr(scanId: string) {
     needsManualReview: boolean;
     failureReason: string | null;
     recommendedAction: string;
-    pharmacyContact: { name: string | null; phone: string | null } | null;
+    pharmacyContact: {
+      name: string | null;
+      phone: string | null;
+      address: string | null;
+      rawLine: string | null;
+      confidence: "high" | "medium" | "low";
+      source: "ocr";
+    } | null;
     next: string;
   };
 }
@@ -383,7 +399,11 @@ export async function runOcr(scanId: string) {
   "recommendedAction": "Call /functions/v1/analyze-medication",
   "pharmacyContact": {
     "name": "이약뭐지약국",
-    "phone": "02-1234-5678"
+    "phone": "02-1234-5678",
+    "address": "서울특별시 ...",
+    "rawLine": "이약뭐지약국 TEL 02-1234-5678",
+    "confidence": "high",
+    "source": "ocr"
   },
   "next": "Call /functions/v1/analyze-medication"
 }
@@ -421,6 +441,7 @@ UI 분기:
 - `needsManualReview = true`: 자동 결과를 확정하지 말고 재촬영 또는 약사/의사 확인 안내를 표시한다.
 - `failureReason = "low_ocr_confidence"`: 인식 텍스트는 보여주되 약품 등록 전 사용자 확인을 강제한다.
 - `failureReason = "empty_ocr_text"`: 재촬영 안내를 우선 표시한다.
+- `failureReason = "unsupported_image_type"`: 프론트 변환 또는 재업로드 안내를 표시한다.
 - `pharmacyContact`가 있으면 OCR 실패/저신뢰도 화면에서 처방 약국 연락처로 보여줄 수 있다.
 
 ## 8. 약품 분석 호출
@@ -482,6 +503,13 @@ type AnalyzeMedicationResponse = {
     hasMedicationDetails: boolean;
     missingFields: string[];
   };
+  publicLookup: {
+    attempted: boolean;
+    status: "not_needed" | "succeeded" | "partial" | "failed" | "skipped_low_confidence";
+    queriedCandidates: string[];
+    insertedMedicationCount: number;
+    message: string;
+  };
   recommendedAction: string;
 };
 ```
@@ -537,6 +565,13 @@ export async function analyzeMedication(scanId: string) {
     informationAvailability: {
       hasMedicationDetails: boolean;
       missingFields: string[];
+    };
+    publicLookup: {
+      attempted: boolean;
+      status: "not_needed" | "succeeded" | "partial" | "failed" | "skipped_low_confidence";
+      queriedCandidates: string[];
+      insertedMedicationCount: number;
+      message: string;
     };
     recommendedAction: string;
   };
@@ -594,6 +629,13 @@ export async function analyzeMedication(scanId: string) {
     "hasMedicationDetails": true,
     "missingFields": []
   },
+  "publicLookup": {
+    "attempted": false,
+    "status": "not_needed",
+    "queriedCandidates": [],
+    "insertedMedicationCount": 0,
+    "message": "내부 의약품 DB에서 후보를 찾았습니다. 공공 API 추가 조회가 필요하지 않습니다."
+  },
   "recommendedAction": "약품 후보를 바로 표시할 수 있습니다. 사용자가 최종 확인하면 현재 복용약으로 등록하세요."
 }
 ```
@@ -609,6 +651,8 @@ UI 표시 원칙:
 - `match_quality = "none"` 또는 `unmatchedCandidates`가 있으면 자동 등록을 막는다.
 - `warning_message`가 있으면 그대로 사용자에게 보여준다.
 - `medications`가 있으면 효능/복용법/주의사항/보관법을 이 객체에서 표시한다. 값이 `null`이면 프론트에서 추측 문구를 만들지 않는다.
+- `publicLookup.attempted = true`이면 내부 DB에 없던 후보를 공공 의약품 API로 조회한 것이다. `status = "failed"`여도 전체 분석 결과는 표시하되, 공공 DB 확인 실패 안내를 함께 보여준다.
+- `publicLookup.status = "skipped_low_confidence"`이면 OCR 신뢰도가 낮아 공공 API 자동 조회를 막은 상태다. 재촬영 또는 사용자 확인을 우선한다.
 - `TYLENOL`처럼 브랜드명만 인식된 경우에는 여러 세부 제품이 있을 수 있어 `review_required`가 될 수 있다. `TYLENOL ER`처럼 세부 표기가 잡히면 더 구체적인 후보로 매칭된다.
 - 약품 자동 등록은 하지 말고, 사용자 확인 후 `confirm-medication`을 호출한다.
 
@@ -770,6 +814,20 @@ type GeminiChatResponse = {
   citedMedicationIds: string[];
   citedInteractionIds: string[];
   disclaimer: string;
+  interactionEvidence?: {
+    mode: "not_interaction_question" | "confirmed_warning" | "no_registered_warning" | "insufficient_context";
+    checkedMedicationIds: string[];
+    interactions: Array<{
+      id: string;
+      severity: string;
+      description: string | null;
+      recommendation: string | null;
+      source: string | null;
+      updated_at: string | null;
+    }>;
+    message: string;
+    isConfirmedSafe: false;
+  };
 };
 ```
 
@@ -792,6 +850,13 @@ export async function askMedicationChatbot(params: {
     citedMedicationIds: string[];
     citedInteractionIds: string[];
     disclaimer: string;
+    interactionEvidence?: {
+      mode: "not_interaction_question" | "confirmed_warning" | "no_registered_warning" | "insufficient_context";
+      checkedMedicationIds: string[];
+      interactions: unknown[];
+      message: string;
+      isConfirmedSafe: false;
+    };
   };
 }
 ```
@@ -826,6 +891,10 @@ UI 표시 원칙:
 - `safetyLevel = "urgent"`: 강한 경고 UI, 전문가 상담 우선
 - `needsDoctorOrPharmacist = true`이면 답변 하단에 상담 안내를 반드시 표시
 - `disclaimer`는 답변 하단에 표시
+- 상호작용 질문은 `gemini-chat`이 먼저 내부 DB 근거를 확인한다.
+- `interactionEvidence.mode = "insufficient_context"`이면 함께 복용 가능 여부를 표시하지 말고 전문가 확인 안내를 보여준다.
+- `interactionEvidence.mode = "no_registered_warning"`은 “안전함”이 아니라 “현재 DB에 등록된 경고 없음”으로 표시한다.
+- `interactionEvidence.mode = "confirmed_warning"`이면 `interactions[].recommendation`과 전문가 확인 안내를 강조한다.
 
 답변 화면에 항상 포함할 문구:
 
