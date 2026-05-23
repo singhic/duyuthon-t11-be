@@ -83,3 +83,6 @@ verify_jwt = true
 
 [functions.medication-checklist]
 verify_jwt = true
+
+[functions.maintenance-runner]
+verify_jwt = false

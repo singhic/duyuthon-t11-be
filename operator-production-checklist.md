@@ -197,6 +197,7 @@ GOOGLE_VISION_API_KEY 또는 GOOGLE_SERVICE_ACCOUNT_JSON
 GEMINI_API_KEY
 DATA_GO_KR_SERVICE_KEY
 SUPABASE_SERVICE_ROLE_KEY
+CRON_SECRET
 ```
 
 운영자가 해야 할 일:
@@ -204,6 +205,7 @@ SUPABASE_SERVICE_ROLE_KEY
 - Secret 값을 저장소에 커밋하지 않기
 - 운영 Secret은 최소 인원만 접근 가능하게 관리
 - 담당자 퇴사/변경 시 Secret 회전
+- `CRON_SECRET`은 `maintenance-runner` scheduled job 호출용으로만 사용
 
 ## 4. 개인정보 및 법적 검토
 

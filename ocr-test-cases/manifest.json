@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "description": "OCR regression manifest. Add real frontend-captured images after frontend upload UX is ready.",
+  "cases": [],
+  "caseSchema": {
+    "id": "string",
+    "imagePath": "ocr-test-cases/images/example.jpg",
+    "imageType": "prescription | pharmacy_bag | pill_package | blurry | dark | tilted",
+    "expectedMedicationNames": ["string"],
+    "expectedPharmacyName": "string | null",
+    "expectedPharmacyPhone": "string | null",
+    "expectedDosageHints": ["string"],
+    "notes": "string"
+  }
+}

@@ -19,6 +19,7 @@ supabase/functions/delete-scan-image/index.ts
 supabase/functions/confirm-medication/index.ts
 supabase/functions/notification-tokens/index.ts
 supabase/functions/send-medication-reminders/index.ts
+supabase/functions/maintenance-runner/index.ts
 supabase/functions/caregiver-invite/index.ts
 supabase/functions/caregiver-respond/index.ts
 supabase/functions/caregiver-status/index.ts
@@ -60,6 +61,7 @@ supabase functions deploy delete-scan-image
 supabase functions deploy confirm-medication
 supabase functions deploy notification-tokens
 supabase functions deploy send-medication-reminders
+supabase functions deploy maintenance-runner
 supabase functions deploy caregiver-invite
 supabase functions deploy caregiver-respond
 supabase functions deploy caregiver-status
@@ -79,6 +81,7 @@ supabase secrets set GOOGLE_VISION_API_KEY=<optional-fallback-google-vision-api-
 supabase secrets set GEMINI_API_KEY=<your-gemini-api-key>
 supabase secrets set DATA_GO_KR_SERVICE_KEY=<your-data-go-kr-key>
 supabase secrets set FCM_PROJECT_ID=<your-firebase-project-id>
+supabase secrets set CRON_SECRET=<long-random-secret>
 supabase secrets set GEMINI_MODEL=gemini-2.5-flash
 supabase secrets set GOOGLE_VISION_FEATURE=DOCUMENT_TEXT_DETECTION
 supabase secrets set DAILY_GOOGLE_OCR_LIMIT=50
@@ -106,6 +109,7 @@ GOOGLE_SERVICE_ACCOUNT_JSON
 FCM_PROJECT_ID
 GEMINI_API_KEY
 DATA_GO_KR_SERVICE_KEY
+CRON_SECRET
 ```
 
 FCM 전송 조건:
@@ -290,6 +294,18 @@ FCM 푸시 토큰 등록:
   "windowEnd": "2026-05-22T09:15:00+09:00"
 }
 ```
+
+Scheduled job 전용 운영 wrapper:
+
+```json
+{
+  "job": "sync_dur_known_medications",
+  "medicationLimit": 20,
+  "maxDurRowsPerMedication": 100
+}
+```
+
+`maintenance-runner`는 `verify_jwt=false`이며 `x-cron-secret: <CRON_SECRET>` header가 있어야 호출된다. 스케줄러는 기존 admin JWT 함수가 아니라 `maintenance-runner`를 호출한다. 자세한 호출 body와 모니터링 SQL은 `backend-maintenance-runbook.md`를 따른다.
 
 운영자 DUR batch 동기화:
 
