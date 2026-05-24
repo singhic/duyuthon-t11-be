@@ -134,24 +134,98 @@ function normalizeText(text: string): string {
     .trim();
 }
 
-function isUsefulCandidateLine(line: string): boolean {
-  if (line.length < 2 || line.length > 80) return false;
-  if (/^\d+$/.test(line)) return false;
+const APPEARANCE_WORDS = new Set([
+  // 색상
+  "흰색","하얀색","백색","노란색","황색","담황색","연황색","주황색","등황색",
+  "분홍색","연분홍색","빨간색","적색","담적색","파란색","청색","담청색",
+  "녹색","연녹색","갈색","황갈색","적갈색","보라색","자색","회색","회백색",
+  "무색","투명","반투명",
+  // 모양
+  "원형","타원형","장방형","삼각형","사각형","오각형","육각형",
+  "팔각형","반원형","렌즈형","캡슐형",
+  // 제형
+  "정제","필름코팅정","당의정","장용정","구강붕해정","서방정","지속성정",
+  "발포정","저작정","경질캡슐","연질캡슐","장용캡슐","과립","세립",
+  "미립","분말","시럽","용액","현탁액","유제","주사제",
+  // 외용제
+  "연고","크림","겔","로션","패취","패치",
+  // 투여 경로
+  "점안액","점이액","점비액","흡입제","스프레이","에어로졸",
+  // 기타
+  "장용성","필름코팅","당코팅","코팅",
+]);
 
-  const hasKorean = /[가-힣]/.test(line);
-  const hasDrugForm = /(정|캡슐|시럽|액|주|연고|크림|겔|패취|산|과립|점안액|흡입제)/.test(line);
-  if (hasKorean || hasDrugForm) return true;
+function normalizeAppearanceText(text: string): string {
+  return text
+    .replace(/의/g, " ")
+    .replace(/제$/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
 
-  // Google OCR often returns tiny Latin fragments around pill logos, e.g. "ru" or "ER".
-  // Keep longer Latin brand candidates; short fragments are handled by explicit brand extraction below.
-  if (/^[A-Za-z]{1,3}$/.test(line)) return false;
+function isPureAppearanceLine(line: string): boolean {
+  const normalized = normalizeAppearanceText(line);
 
-  return line.length >= 4;
+  let count = 0;
+
+  for (const token of normalized.split(/\s+/)) {
+    if (APPEARANCE_WORDS.has(token)) {
+      count++;
+
+      if (count >= 2) {
+        return true;
+      }
+    }
+  }
+
+  return false;
+}
+
+export function isUsefulCandidateLine(line: string): boolean {
+  const trimmed = line.trim();
+
+  // 1. 길이 제한
+  if (trimmed.length < 2 || trimmed.length > 80) {
+    return false;
+  }
+
+  // 2. 순수 숫자 제거
+  if (/^\d+$/.test(trimmed)) {
+    return false;
+  }
+
+  // 3. 복약 지시문 / 약국 정보 제거
+  const instructionNoise =
+    /(약국|전화|tel|주의|보관|용법|용량|식후|식전|취침전|복용|처방|조제)/i;
+
+  if (instructionNoise.test(trimmed)) {
+    return false;
+  }
+
+  // 4. 순수 성상 정보 제거
+  if (isPureAppearanceLine(trimmed)) {
+    return false;
+  }
+
+  // 5. OCR 영문 파편 제거
+  if (/^[A-Za-z]{1,3}$/.test(trimmed)) {
+    return false;
+  }
+
+  // 6. 최종 화이트리스트
+  const hasKorean = /[가-힣]/.test(trimmed);
+
+  const hasDrugForm =
+    /(정|캡슐|시럽|액|주|연고|크림|겔|패취|산|과립|점안액|흡입제)/.test(
+      trimmed
+    );
+
+  return hasKorean || hasDrugForm || trimmed.length >= 3; //4->3: 피디정 같은건 3글자라 완화
 }
 
 function extractCandidates(ocrText: string): string[] {
   const normalizedLines = ocrText
-    .split(/[\n\r,;]+|\s{2,}/)
+    .split(/[\n\r,;]+|\s{3,}/) /* 스플릿 기준 변경 2 -> 3 : 약제 설명 오인식 문제 해결용임. */
     .map((line) => normalizeText(line))
     .filter(Boolean);
   const combinedLatinCandidates: string[] = [];
