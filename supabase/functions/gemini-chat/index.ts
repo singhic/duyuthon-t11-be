@@ -137,6 +137,11 @@ function relationOne(value: any): any | null {
   return Array.isArray(value) ? value[0] ?? null : value ?? null;
 }
 
+function optionalNonEmptyString(value: string | undefined): string | undefined {
+  const trimmed = value?.trim();
+  return trimmed ? trimmed : undefined;
+}
+
 async function loadInteractionEvidence(
   serviceClient: any,
   _question: string,
@@ -315,8 +320,13 @@ Deno.serve(async (req) => {
   try {
     const { user, serviceClient } = await requireUser(req);
     const body = await readJson<RequestBody>(req);
+    const question = body.question?.trim();
+    const scanId = optionalNonEmptyString(body.scanId);
+    const userMedicationId = optionalNonEmptyString(body.userMedicationId);
+    const detectedMedicationId = optionalNonEmptyString(body.detectedMedicationId);
+    const medicationId = optionalNonEmptyString(body.medicationId);
 
-    if (!body.question?.trim()) {
+    if (!question) {
       throw new HttpError(400, "question is required");
     }
 
@@ -342,7 +352,7 @@ Deno.serve(async (req) => {
         .from("chat_sessions")
         .insert({
           user_id: user.id,
-          scan_id: body.scanId ?? null,
+          scan_id: scanId ?? null,
         })
         .select("id")
         .single();
@@ -354,7 +364,7 @@ Deno.serve(async (req) => {
     await serviceClient.from("chat_messages").insert({
       chat_session_id: chatSessionId,
       role: "user",
-      content: body.question.trim(),
+      content: question,
     });
 
     const [{ data: activeMeds, error: medsError }, { data: detected, error: detectedError }, { data: scan, error: scanError }] = await Promise.all([
@@ -363,17 +373,17 @@ Deno.serve(async (req) => {
         .select("id, medication_id, custom_name, medications(id,item_name,efficacy,dosage,precautions,side_effects,storage_method,administration_timing,information_completeness,source,source_updated_at)")
         .eq("user_id", user.id)
         .eq("active", true),
-      body.scanId
+      scanId
         ? serviceClient
           .from("scan_detected_medications")
           .select("id, medication_id, detected_name, matched_name, confidence, match_quality, needs_confirmation, warning_message, medications(id,item_name,efficacy,dosage,precautions,side_effects,storage_method,administration_timing,information_completeness,source,source_updated_at)")
-          .eq("scan_id", body.scanId)
+          .eq("scan_id", scanId)
         : Promise.resolve({ data: [], error: null }),
-      body.scanId
+      scanId
         ? serviceClient
           .from("scan_sessions")
           .select("id, confidence, status, ocr_text, review_status, failure_reason, recommended_action, pharmacy_contact")
-          .eq("id", body.scanId)
+          .eq("id", scanId)
           .eq("user_id", user.id)
           .maybeSingle()
         : Promise.resolve({ data: null, error: null }),
@@ -383,7 +393,7 @@ Deno.serve(async (req) => {
     if (detectedError) throw new HttpError(500, "Failed to load scan medications", detectedError);
     if (scanError) throw new HttpError(500, "Failed to load scan session", scanError);
 
-    let selectedMedicationContext: SelectedMedicationContext = body.scanId
+    let selectedMedicationContext: SelectedMedicationContext = scanId
       ? {
         source: "scan",
         userMedicationId: null,
@@ -402,11 +412,11 @@ Deno.serve(async (req) => {
     let selectedDetectedMeds: any[] = [];
     let selectedMedicationMasters: any[] = [];
 
-    if (body.userMedicationId) {
+    if (userMedicationId) {
       const { data: selected, error: selectedError } = await serviceClient
         .from("user_medications")
         .select("id, medication_id, custom_name, medications(id,item_name,efficacy,dosage,precautions,side_effects,storage_method,administration_timing,information_completeness,source,source_updated_at)")
-        .eq("id", body.userMedicationId)
+        .eq("id", userMedicationId)
         .eq("user_id", user.id)
         .eq("active", true)
         .maybeSingle();
@@ -422,11 +432,11 @@ Deno.serve(async (req) => {
         medicationId: selected.medication_id ?? relationOne(selected.medications)?.id ?? null,
         name: medicationName(selected),
       };
-    } else if (body.detectedMedicationId) {
+    } else if (detectedMedicationId) {
       const { data: selected, error: selectedError } = await serviceClient
         .from("scan_detected_medications")
         .select("id, medication_id, detected_name, matched_name, confidence, match_quality, needs_confirmation, warning_message, medications(id,item_name,efficacy,dosage,precautions,side_effects,storage_method,administration_timing,information_completeness,source,source_updated_at), scan_sessions(id,user_id)")
-        .eq("id", body.detectedMedicationId)
+        .eq("id", detectedMedicationId)
         .maybeSingle();
 
       if (selectedError) throw new HttpError(500, "Failed to load selected detected medication", selectedError);
@@ -445,11 +455,11 @@ Deno.serve(async (req) => {
         medicationId: selected.medication_id ?? relationOne(selected.medications)?.id ?? null,
         name: medicationName(selected),
       };
-    } else if (body.medicationId) {
+    } else if (medicationId) {
       const { data: selected, error: selectedError } = await serviceClient
         .from("medications")
         .select("id,item_name,efficacy,dosage,precautions,side_effects,storage_method,administration_timing,information_completeness,source,source_updated_at")
-        .eq("id", body.medicationId)
+        .eq("id", medicationId)
         .maybeSingle();
 
       if (selectedError) throw new HttpError(500, "Failed to load selected medication", selectedError);
@@ -470,10 +480,10 @@ Deno.serve(async (req) => {
       [...(detected ?? []), ...selectedDetectedMeds],
       selectedMedicationMasters,
     );
-    const safetyIntent = classifySafetyIntent(body.question.trim());
+    const safetyIntent = classifySafetyIntent(question);
     const interactionEvidence = await loadInteractionEvidence(
       serviceClient,
-      body.question.trim(),
+      question,
       medicationContext,
       safetyIntent,
     );
@@ -579,30 +589,58 @@ Deno.serve(async (req) => {
     let gemini;
     try {
       gemini = await askGeminiForMedicationAnswer({
-        question: body.question.trim(),
+        question,
         context,
       });
     } catch (geminiError) {
-      await logApiUsage(serviceClient, {
-        userId: user.id,
-        provider: "gemini",
-        endpoint: "generateContent",
-        status: "failed",
-      }).catch(() => {});
+      const fallbackAnswer: MedicationAnswer = {
+        answer: "지금은 답변을 생성하지 못했습니다. 증상이 있거나 복약 중 불편함이 있으면 임의로 약을 중단하지 말고, 처방한 병원이나 약국에 바로 확인하세요.",
+        safetyLevel: "caution",
+        needsDoctorOrPharmacist: true,
+        citedMedicationIds: [],
+        citedInteractionIds: [],
+        disclaimer: DEFAULT_DISCLAIMER,
+      };
 
-      await serviceClient.from("chat_messages").insert({
-        chat_session_id: chatSessionId,
-        role: "assistant",
-        content: "지금은 답변을 생성하지 못했습니다. AI 답변은 틀릴 수 있으니, 정확한 복약 정보는 의사 또는 약사에게 확인하세요.",
-        model_name: Deno.env.get("GEMINI_MODEL") ?? "gemini-2.5-flash",
-        citations: {
-          error: errorMessage(geminiError).slice(0, 500),
-        },
-        safety_level: "caution",
-        needs_doctor_or_pharmacist: true,
-      }).catch(() => {});
+      try {
+        await logApiUsage(serviceClient, {
+          userId: user.id,
+          provider: "gemini",
+          endpoint: "generateContent",
+          status: "failed",
+        });
+      } catch (_) {
+        // Preserve the original Gemini failure.
+      }
 
-      throw geminiError;
+      try {
+        await serviceClient.from("chat_messages").insert({
+          chat_session_id: chatSessionId,
+          role: "assistant",
+          content: fallbackAnswer.answer,
+          model_name: Deno.env.get("GEMINI_MODEL") ?? "gemini-2.5-flash",
+          citations: {
+            error: errorMessage(geminiError).slice(0, 500),
+            safetyIntent,
+            interactionEvidence,
+            selectedMedicationContext,
+            generationFailed: true,
+          },
+          safety_level: fallbackAnswer.safetyLevel,
+          needs_doctor_or_pharmacist: fallbackAnswer.needsDoctorOrPharmacist,
+        });
+      } catch (_) {
+        // Preserve the original Gemini failure.
+      }
+
+      return json({
+        chatSessionId,
+        ...fallbackAnswer,
+        safetyIntent,
+        interactionEvidence,
+        selectedMedicationContext,
+        generationFailed: true,
+      });
     }
 
     const responseSafetyIntent: SafetyIntent = gemini.answer.safetyLevel === "urgent" && safetyIntent !== "emergency"
