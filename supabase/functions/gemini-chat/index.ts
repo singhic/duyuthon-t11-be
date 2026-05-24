@@ -70,7 +70,7 @@ function classifySafetyIntent(question: string): SafetyIntent {
     return "prompt_attack";
   }
 
-  if (/(숨이?\s*답답|호흡\s*곤란|숨.*안\s*쉬|의식\s*(저하|없|잃)|흉통|가슴.*통증|심한\s*두드러기|두드러기.*호흡|얼굴.*붓|입술.*붓|목.*붓|과다\s*복용|너무\s*많이\s*먹|피.*토|피.*변|자살|자해)/i.test(normalized)) {
+  if (/(숨이?\s*답답|호흡\s*곤란|숨.*안\s*쉬|의식\s*(저하|없|잃)|흉통|가슴.*통증|심한\s*두드러기|두드러기.*호흡|얼굴.*붓|입술.*붓|목.*붓|치사량|치명량|중독|약물\s*중독|과다\s*복용|과다복용|과용|과량|다량\s*복용|많이\s*복용|너무\s*많이\s*먹|많이\s*먹었|한꺼번에\s*(먹|복용)|권장량보다\s*많이|피.*토|피.*변|자살|자해)/i.test(normalized)) {
     return "emergency";
   }
 
@@ -605,21 +605,32 @@ Deno.serve(async (req) => {
       throw geminiError;
     }
 
+    const responseSafetyIntent: SafetyIntent = gemini.answer.safetyLevel === "urgent" && safetyIntent !== "emergency"
+      ? "emergency"
+      : safetyIntent;
+    const responseAnswer: MedicationAnswer = gemini.answer.safetyLevel === "urgent"
+      ? {
+        ...gemini.answer,
+        needsDoctorOrPharmacist: true,
+      }
+      : gemini.answer;
+
     await serviceClient.from("chat_messages").insert({
       chat_session_id: chatSessionId,
       role: "assistant",
-      content: gemini.answer.answer,
+      content: responseAnswer.answer,
       model_name: gemini.model,
       citations: {
-        medicationIds: gemini.answer.citedMedicationIds,
-        interactionIds: gemini.answer.citedInteractionIds,
-        safetyIntent,
+        medicationIds: responseAnswer.citedMedicationIds,
+        interactionIds: responseAnswer.citedInteractionIds,
+        safetyIntent: responseSafetyIntent,
+        originalSafetyIntent: safetyIntent,
         interactionEvidence,
         selectedMedicationContext,
         rawSafetyBlocked: gemini.safetyBlocked,
       },
-      safety_level: gemini.answer.safetyLevel,
-      needs_doctor_or_pharmacist: gemini.answer.needsDoctorOrPharmacist,
+      safety_level: responseAnswer.safetyLevel,
+      needs_doctor_or_pharmacist: responseAnswer.needsDoctorOrPharmacist,
     });
 
     await logApiUsage(serviceClient, {
@@ -631,8 +642,8 @@ Deno.serve(async (req) => {
 
     return json({
       chatSessionId,
-      ...gemini.answer,
-      safetyIntent,
+      ...responseAnswer,
+      safetyIntent: responseSafetyIntent,
       interactionEvidence,
       selectedMedicationContext,
     });
