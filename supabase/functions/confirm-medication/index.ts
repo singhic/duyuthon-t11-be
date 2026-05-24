@@ -3,7 +3,8 @@ import { errorResponse, HttpError, json, readJson } from "../_shared/http.ts";
 import { requireUser } from "../_shared/supabase.ts";
 
 type RequestBody = {
-  detectedMedicationId: string;
+  detectedMedicationId?: string;
+  userMedicationId?: string;
   startDate?: string;
   endDate?: string;
   customName?: string;
@@ -84,14 +85,49 @@ Deno.serve(async (req) => {
     const { user, serviceClient } = await requireUser(req);
     const body = await readJson<RequestBody>(req);
 
-    if (!body.detectedMedicationId) {
+    if (!body.detectedMedicationId && !body.userMedicationId) {
+      throw new HttpError(400, "detectedMedicationId or userMedicationId is required");
+    }
+
+    if (body.userMedicationId) {
+      const nextCustomName = normalizeCustomName(body.customName);
+      if (!nextCustomName) {
+        throw new HttpError(400, "customName is required when updating an existing user medication");
+      }
+
+      const { data: existingUserMedication, error: userMedicationError } = await serviceClient
+        .from("user_medications")
+        .select(USER_MEDICATION_SELECT)
+        .eq("id", body.userMedicationId)
+        .eq("user_id", user.id)
+        .maybeSingle();
+
+      if (userMedicationError) throw new HttpError(500, "Failed to load user medication", userMedicationError);
+      if (!existingUserMedication) throw new HttpError(404, "User medication not found");
+
+      const updatedUserMedication = await updateCustomNameIfChanged(
+        serviceClient,
+        existingUserMedication,
+        nextCustomName,
+      );
+      const schedules = await loadActiveSchedules(serviceClient, updatedUserMedication.id);
+
+      return json({
+        userMedication: updatedUserMedication,
+        alreadyExists: true,
+        schedules,
+      });
+    }
+
+    const detectedMedicationId = body.detectedMedicationId;
+    if (!detectedMedicationId) {
       throw new HttpError(400, "detectedMedicationId is required");
     }
 
     const { data: detected, error: detectedError } = await serviceClient
       .from("scan_detected_medications")
       .select("id, medication_id, matched_name, scan_sessions(id,user_id)")
-      .eq("id", body.detectedMedicationId)
+      .eq("id", detectedMedicationId)
       .maybeSingle();
 
     if (detectedError) throw new HttpError(500, "Failed to load detected medication", detectedError);
@@ -123,7 +159,7 @@ Deno.serve(async (req) => {
         existingMedication,
         body.customName,
       );
-      await markDetectedMedicationConfirmed(serviceClient, body.detectedMedicationId);
+      await markDetectedMedicationConfirmed(serviceClient, detectedMedicationId);
 
       const schedules = await loadActiveSchedules(serviceClient, updatedExistingMedication.id);
       return json({
@@ -167,7 +203,7 @@ Deno.serve(async (req) => {
             medicationAfterConflict,
             body.customName,
           );
-          await markDetectedMedicationConfirmed(serviceClient, body.detectedMedicationId);
+          await markDetectedMedicationConfirmed(serviceClient, detectedMedicationId);
 
           const schedules = await loadActiveSchedules(serviceClient, updatedConflictMedication.id);
           return json({
@@ -181,7 +217,7 @@ Deno.serve(async (req) => {
       throw new HttpError(500, "Failed to create user medication", insertError);
     }
 
-    await markDetectedMedicationConfirmed(serviceClient, body.detectedMedicationId);
+    await markDetectedMedicationConfirmed(serviceClient, detectedMedicationId);
 
     return json({ userMedication, alreadyExists: false, schedules: [] }, 201);
   } catch (error) {
