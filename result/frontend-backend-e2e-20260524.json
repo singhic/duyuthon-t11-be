@@ -1,0 +1,968 @@
+﻿{
+    "projectRef":  "hygsrrmoawezonahnljn",
+    "generatedAt":  "2026-05-24T06:29:28.9917637Z",
+    "imageResults":  [
+                         {
+                             "image":  "prescription_1.jpeg",
+                             "scanId":  "1fa67396-a5d5-4baf-9429-420d68e78a8c",
+                             "uploadOk":  true,
+                             "scanInsertOk":  true,
+                             "googleOcr":  {
+                                               "ok":  true,
+                                               "confidence":  0.6132253925000001,
+                                               "ocrTextLength":  15,
+                                               "needsManualReview":  true,
+                                               "failureReason":  "low_ocr_confidence",
+                                               "imageDeleted":  true,
+                                               "pharmacyName":  null,
+                                               "pharmacyPhone":  null,
+                                               "preview":  "#8888\nDRIVE\nL\n0"
+                                           },
+                             "analyze":  {
+                                             "ok":  true,
+                                             "resultMode":  "review_required",
+                                             "matchQuality":  "none",
+                                             "detectedCount":  1,
+                                             "matchedCount":  0,
+                                             "needsUserConfirmation":  true,
+                                             "autoDisplayReady":  false,
+                                             "publicLookupStatus":  "skipped_low_confidence",
+                                             "unmatchedCandidates":  [
+                                                                         "DRIVE"
+                                                                     ],
+                                             "detected":  [
+                                                              {
+                                                                  "id":  "c129dbf5-11e3-42ea-be75-935468b63f98",
+                                                                  "detectedName":  "DRIVE",
+                                                                  "matchedName":  null,
+                                                                  "medicationId":  null,
+                                                                  "confidence":  0,
+                                                                  "matchQuality":  "none",
+                                                                  "needsConfirmation":  true
+                                                              }
+                                                          ]
+                                         },
+                             "confirm":  null
+                         },
+                         {
+                             "image":  "prescription_2.png",
+                             "scanId":  "7871d569-f74b-4241-9679-812b08b37c4f",
+                             "uploadOk":  true,
+                             "scanInsertOk":  true,
+                             "googleOcr":  {
+                                               "ok":  true,
+                                               "confidence":  0.8195502728301883,
+                                               "ocrTextLength":  865,
+                                               "needsManualReview":  false,
+                                               "failureReason":  null,
+                                               "imageDeleted":  true,
+                                               "pharmacyName":  null,
+                                               "pharmacyPhone":  "000-0000-0000",
+                                               "preview":  "ì¡°í©ê¸°í¸: 00000000000\nì²\në°©\nì¦ë²í¸:\n1(ìë£ë³´í 2(ìë£ê¸ì¬ 3()ì°ì¬ë³´í 4()ìëì°¨ë³´í 5() ê¸°í"
+                                           },
+                             "analyze":  {
+                                             "ok":  true,
+                                             "resultMode":  "review_required",
+                                             "matchQuality":  "medium",
+                                             "detectedCount":  24,
+                                             "matchedCount":  0,
+                                             "needsUserConfirmation":  true,
+                                             "autoDisplayReady":  false,
+                                             "publicLookupStatus":  "succeeded",
+                                             "unmatchedCandidates":  [
+                                                                         "ì¡°í©ê¸°í¸ 00000000000",
+                                                                         "ì¦ë²í¸",
+                                                                         "1(ìë£ë³´í 2(ìë£ê¸ì¬ 3()ì°ì¬ë³´í 4()ìëì°¨ë³´í 5() ê¸°í (",
+                                                                         "3()ì°",
+                                                                         "ì¡°íì ",
+                                                                         "(íì ë³´ê´ì©)",
+                                                                         "ììê¸°ê´ê¸°í¸",
+                                                                         "êµë¶ë²í¸ 2019 ë\u0085 02 ì 15 ì¼ -",
+                                                                         "ìì§ì",
+                                                                         "íì",
+                                                                         "í ì± ëª\u0085",
+                                                                         "ì£¼ë¯¼ë±ë¡",
+                                                                         "ë² í¸",
+                                                                         "ì í ë²í¸",
+                                                                         "í©ì¤ ë²í¸",
+                                                                         "e-hilì£¼ì",
+                                                                         "e-hilì£¼",
+                                                                         "ì²ë°©ì",
+                                                                         "ê²¬íì¢\u0085ë³",
+                                                                         "ì±ëª\u0085",
+                                                                         "ê¸°í¸",
+                                                                         "ì¸íë²í¸",
+                                                                         "íìì ìêµ¬ê° ìì ëìë ì§ë³ ë¶ë¥ê¸°í¸ë¥¼ ê¸°ì¬íì§ ìë í©ëë¤",
+                                                                         "1í",
+                                                                         "ì²ë°© ìì½íì ëª\u0085ì¹­",
+                                                                         "ì¼í¬ì´",
+                                                                         "ì¢\u0085ë¶ì ë³¸ì¸",
+                                                                         "íì",
+                                                                         "ì\u0085ì",
+                                                                         "SUNT"
+                                                                     ],
+                                             "detected":  [
+                                                              {
+                                                                  "id":  "8de122be-5bfe-4679-8b87-e6a204b5798a",
+                                                                  "detectedName":  "ì¡°í©ê¸°í¸ 00000000000",
+                                                                  "matchedName":  null,
+                                                                  "medicationId":  null,
+                                                                  "confidence":  0,
+                                                                  "matchQuality":  "medium",
+                                                                  "needsConfirmation":  true
+                                                              },
+                                                              {
+                                                                  "id":  "726996f6-ca5a-420d-9fc8-6dc58559b5fa",
+                                                                  "detectedName":  "ì¦ë²í¸",
+                                                                  "matchedName":  null,
+                                                                  "medicationId":  null,
+                                                                  "confidence":  0,
+                                                                  "matchQuality":  "medium",
+                                                                  "needsConfirmation":  true
+                                                              },
+                                                              {
+                                                                  "id":  "b67507ed-52d5-473e-a0c9-a05de8a1512a",
+                                                                  "detectedName":  "1(ìë£ë³´í 2(ìë£ê¸ì¬ 3()ì°ì¬ë³´í 4()ìëì°¨ë³´í 5() ê¸°í (",
+                                                                  "matchedName":  null,
+                                                                  "medicationId":  null,
+                                                                  "confidence":  0,
+                                                                  "matchQuality":  "medium",
+                                                                  "needsConfirmation":  true
+                                                              },
+                                                              {
+                                                                  "id":  "aa219b31-c255-4bbf-8a79-9f07ae387d12",
+                                                                  "detectedName":  "3()ì°",
+                                                                  "matchedName":  null,
+                                                                  "medicationId":  null,
+                                                                  "confidence":  0,
+                                                                  "matchQuality":  "medium",
+                                                                  "needsConfirmation":  true
+                                                              },
+                                                              {
+                                                                  "id":  "5fb2651f-2807-46d3-bf7d-f16f73caa3b2",
+                                                                  "detectedName":  "ì¡°íì ",
+                                                                  "matchedName":  null,
+                                                                  "medicationId":  null,
+                                                                  "confidence":  0,
+                                                                  "matchQuality":  "medium",
+                                                                  "needsConfirmation":  true
+                                                              },
+                                                              {
+                                                                  "id":  "2e9da150-7820-4ac6-8f59-df50f2014e9e",
+                                                                  "detectedName":  "(íì ë³´ê´ì©)",
+                                                                  "matchedName":  null,
+                                                                  "medicationId":  null,
+                                                                  "confidence":  0,
+                                                                  "matchQuality":  "none",
+                                                                  "needsConfirmation":  true
+                                                              },
+                                                              {
+                                                                  "id":  "c644fc2f-4455-4a17-8658-01065d5cec4a",
+                                                                  "detectedName":  "ììê¸°ê´ê¸°í¸",
+                                                                  "matchedName":  null,
+                                                                  "medicationId":  null,
+                                                                  "confidence":  0,
+                                                                  "matchQuality":  "none",
+                                                                  "needsConfirmation":  true
+                                                              },
+                                                              {
+                                                                  "id":  "9d7563c9-4bee-4184-8901-02b972df85f6",
+                                                                  "detectedName":  "êµë¶ë²í¸ 2019 ë\u0085 02 ì 15 ì¼ -",
+                                                                  "matchedName":  null,
+                                                                  "medicationId":  null,
+                                                                  "confidence":  0,
+                                                                  "matchQuality":  "none",
+                                                                  "needsConfirmation":  true
+                                                              },
+                                                              {
+                                                                  "id":  "9ea4d882-928c-451c-9409-8ebd4d474980",
+                                                                  "detectedName":  "ìì§ì",
+                                                                  "matchedName":  null,
+                                                                  "medicationId":  null,
+                                                                  "confidence":  0,
+                                                                  "matchQuality":  "none",
+                                                                  "needsConfirmation":  true
+                                                              },
+                                                              {
+                                                                  "id":  "8b3486e3-619c-481c-a79a-63506094d07f",
+                                                                  "detectedName":  "í ì± ëª\u0085",
+                                                                  "matchedName":  null,
+                                                                  "medicationId":  null,
+                                                                  "confidence":  0,
+                                                                  "matchQuality":  "none",
+                                                                  "needsConfirmation":  true
+                                                              },
+                                                              {
+                                                                  "id":  "16173261-4ffd-420f-a808-fb6edc666363",
+                                                                  "detectedName":  "ì£¼ë¯¼ë±ë¡",
+                                                                  "matchedName":  null,
+                                                                  "medicationId":  null,
+                                                                  "confidence":  0,
+                                                                  "matchQuality":  "none",
+                                                                  "needsConfirmation":  true
+                                                              },
+                                                              {
+                                                                  "id":  "2f7a2234-6b8f-46b5-b81c-ada2dd1619bd",
+                                                                  "detectedName":  "ë² í¸",
+                                                                  "matchedName":  null,
+                                                                  "medicationId":  null,
+                                                                  "confidence":  0,
+                                                                  "matchQuality":  "none",
+                                                                  "needsConfirmation":  true
+                                                              },
+                                                              {
+                                                                  "id":  "a6209c1e-c981-44e5-af4b-fb19ef189450",
+                                                                  "detectedName":  "ì í ë²í¸",
+                                                                  "matchedName":  null,
+                                                                  "medicationId":  null,
+                                                                  "confidence":  0,
+                                                                  "matchQuality":  "none",
+                                                                  "needsConfirmation":  true
+                                                              },
+                                                              {
+                                                                  "id":  "723c5419-21ed-4dd2-9508-f14ffe26d4d7",
+                                                                  "detectedName":  "í©ì¤ ë²í¸",
+                                                                  "matchedName":  null,
+                                                                  "medicationId":  null,
+                                                                  "confidence":  0,
+                                                                  "matchQuality":  "none",
+                                                                  "needsConfirmation":  true
+                                                              },
+                                                              {
+                                                                  "id":  "052b3f23-887a-4596-94dd-fe5fec1dbee3",
+                                                                  "detectedName":  "e-hilì£¼ì",
+                                                                  "matchedName":  null,
+                                                                  "medicationId":  null,
+                                                                  "confidence":  0,
+                                                                  "matchQuality":  "none",
+                                                                  "needsConfirmation":  true
+                                                              },
+                                                              {
+                                                                  "id":  "65c5c31e-94c2-4de2-8e07-0e1ea19e8aa2",
+                                                                  "detectedName":  "e-hilì£¼",
+                                                                  "matchedName":  null,
+                                                                  "medicationId":  null,
+                                                                  "confidence":  0,
+                                                                  "matchQuality":  "none",
+                                                                  "needsConfirmation":  true
+                                                              },
+                                                              {
+                                                                  "id":  "6d5d0e37-5238-4f87-a523-ffe51b6b55af",
+                                                                  "detectedName":  "ì²ë°©ì",
+                                                                  "matchedName":  null,
+                                                                  "medicationId":  null,
+                                                                  "confidence":  0,
+                                                                  "matchQuality":  "none",
+                                                                  "needsConfirmation":  true
+                                                              },
+                                                              {
+                                                                  "id":  "8d3de09c-a563-42a1-81d6-246ab621f476",
+                                                                  "detectedName":  "ê²¬íì¢\u0085ë³",
+                                                                  "matchedName":  null,
+                                                                  "medicationId":  null,
+                                                                  "confidence":  0,
+                                                                  "matchQuality":  "none",
+                                                                  "needsConfirmation":  true
+                                                              },
+                                                              {
+                                                                  "id":  "7ddf737d-f16d-4d7f-ad30-04d7b0136bd9",
+                                                                  "detectedName":  "ì¸íë²í¸",
+                                                                  "matchedName":  null,
+                                                                  "medicationId":  null,
+                                                                  "confidence":  0,
+                                                                  "matchQuality":  "none",
+                                                                  "needsConfirmation":  true
+                                                              },
+                                                              {
+                                                                  "id":  "c9dae782-ab9f-4406-ae52-0cc1f45bc1f5",
+                                                                  "detectedName":  "íìì ìêµ¬ê° ìì ëìë ì§ë³ ë¶ë¥ê¸°í¸ë¥¼ ê¸°ì¬íì§ ìë í©ëë¤",
+                                                                  "matchedName":  null,
+                                                                  "medicationId":  null,
+                                                                  "confidence":  0,
+                                                                  "matchQuality":  "none",
+                                                                  "needsConfirmation":  true
+                                                              },
+                                                              {
+                                                                  "id":  "456521ff-b89f-4633-8016-13bef9c47285",
+                                                                  "detectedName":  "ì²ë°© ìì½íì ëª\u0085ì¹­",
+                                                                  "matchedName":  null,
+                                                                  "medicationId":  null,
+                                                                  "confidence":  0,
+                                                                  "matchQuality":  "none",
+                                                                  "needsConfirmation":  true
+                                                              },
+                                                              {
+                                                                  "id":  "3f455b3e-b908-489b-ad8e-7f4c192102a2",
+                                                                  "detectedName":  "ì¼í¬ì´",
+                                                                  "matchedName":  null,
+                                                                  "medicationId":  null,
+                                                                  "confidence":  0,
+                                                                  "matchQuality":  "none",
+                                                                  "needsConfirmation":  true
+                                                              },
+                                                              {
+                                                                  "id":  "24cb67a4-f41a-4b04-8706-ee63ba6fd0a3",
+                                                                  "detectedName":  "ì¢\u0085ë¶ì ë³¸ì¸",
+                                                                  "matchedName":  null,
+                                                                  "medicationId":  null,
+                                                                  "confidence":  0,
+                                                                  "matchQuality":  "none",
+                                                                  "needsConfirmation":  true
+                                                              },
+                                                              {
+                                                                  "id":  "b36a4239-e1f0-4692-b5a2-116e09dfe382",
+                                                                  "detectedName":  "SUNT",
+                                                                  "matchedName":  null,
+                                                                  "medicationId":  null,
+                                                                  "confidence":  0,
+                                                                  "matchQuality":  "none",
+                                                                  "needsConfirmation":  true
+                                                              }
+                                                          ]
+                                         },
+                             "confirm":  null
+                         },
+                         {
+                             "image":  "prescription_3.png",
+                             "scanId":  "e2df62e9-3576-4216-a434-7d3fd9b1ca8a",
+                             "uploadOk":  true,
+                             "scanInsertOk":  true,
+                             "googleOcr":  {
+                                               "ok":  true,
+                                               "confidence":  null,
+                                               "ocrTextLength":  0,
+                                               "needsManualReview":  true,
+                                               "failureReason":  "empty_ocr_text",
+                                               "imageDeleted":  true,
+                                               "pharmacyName":  null,
+                                               "pharmacyPhone":  null,
+                                               "preview":  ""
+                                           },
+                             "analyze":  {
+                                             "ok":  false,
+                                             "status":  400,
+                                             "error":  "{\"error\":\"Scan session has no OCR text\",\"details\":null}"
+                                         },
+                             "confirm":  null
+                         },
+                         {
+                             "image":  "prescription_4.jpg",
+                             "scanId":  "704c18ae-b883-42a7-bacc-ae7ac1fc96ec",
+                             "uploadOk":  true,
+                             "scanInsertOk":  true,
+                             "googleOcr":  {
+                                               "ok":  true,
+                                               "confidence":  0.7657503210204084,
+                                               "ocrTextLength":  919,
+                                               "needsManualReview":  false,
+                                               "failureReason":  null,
+                                               "imageDeleted":  true,
+                                               "pharmacyName":  "(ì½êµ­ì ì¶ì©)",
+                                               "pharmacyPhone":  "20240104",
+                                               "preview":  "[ë³ì§ ì 10í¸ ìì\n[ê±´ê°ë³´í]\nêµë¶ì¼ì§\në²í¸\n20240104\n00027\nì²ë°©ì \nBURZ\nì±\nëª\u0085\nì\nìë¥ë°±ë²í¸\nH\n1"
+                                           },
+                             "analyze":  {
+                                             "ok":  true,
+                                             "resultMode":  "review_required",
+                                             "matchQuality":  "medium",
+                                             "detectedCount":  25,
+                                             "matchedCount":  0,
+                                             "needsUserConfirmation":  true,
+                                             "autoDisplayReady":  false,
+                                             "publicLookupStatus":  "succeeded",
+                                             "unmatchedCandidates":  [
+                                                                         "[ë³ì§ ì 10í¸ ìì",
+                                                                         "[ê±´ê°ë³´í]",
+                                                                         "êµë¶ì¼ì§",
+                                                                         "ë²í¸",
+                                                                         "ì²ë°©ì ",
+                                                                         "BURZ",
+                                                                         "ìë¥ë°±ë²í¸",
+                                                                         "ì²ë°©ìë£ì¸ì",
+                                                                         "ìë£ê¸°ê´",
+                                                                         "ìì ìêµ¬ê° ìë ëìë ëª\u0085ë¶ë¥ê¸°í¸ë¥¼ ê¸°ì¬íì§ ìëí©ëë¤.",
+                                                                         "ììê¸°ê´ë²í¸",
+                                                                         "(ì½êµ­ì ì¶ì©)",
+                                                                         "í©ì¤ë²í¸",
+                                                                         "ì£¼ì",
+                                                                         "ìì¬",
+                                                                         "ë©´íë²í¸",
+                                                                         "ì²ë°©ìì½íì ì",
+                                                                         "1í",
+                                                                         "1ì¼",
+                                                                         "ëì´íì í¬ì½ì¼ì",
+                                                                         "ëì ìì¸",
+                                                                         "(6401971)ì¼ë³¸ì¸) 19%(íìë£¨ë¡ ì°ëí¸í¼)(",
+                                                                         "(íìë£¨ë¡ ì°",
+                                                                         "ë§¤ì(ì²",
+                                                                         "í) ìë³´",
+                                                                         "1ìê°ë§ë¤ ì¬ì©íì¸ì",
+                                                                         "ì£¼ì¬ì  ì²ë°© ë´ì­ (ìì¡°ì¬ (1. ì¸ì¹",
+                                                                         "ì¡°ì ì ê³ ì¬í",
+                                                                         "ëì²´ì¡°ì  ê°ë¥í©ëë¤.",
+                                                                         "ë³ìì íµíë ê²°ê³¼"
+                                                                     ],
+                                             "detected":  [
+                                                              {
+                                                                  "id":  "fdbec7bc-1904-414e-b4d8-e77172e9ad51",
+                                                                  "detectedName":  "[ë³ì§ ì 10í¸ ìì",
+                                                                  "matchedName":  null,
+                                                                  "medicationId":  null,
+                                                                  "confidence":  0,
+                                                                  "matchQuality":  "medium",
+                                                                  "needsConfirmation":  true
+                                                              },
+                                                              {
+                                                                  "id":  "69ee7955-ad64-48dc-90d8-22f43758f6fb",
+                                                                  "detectedName":  "[ê±´ê°ë³´í]",
+                                                                  "matchedName":  null,
+                                                                  "medicationId":  null,
+                                                                  "confidence":  0,
+                                                                  "matchQuality":  "medium",
+                                                                  "needsConfirmation":  true
+                                                              },
+                                                              {
+                                                                  "id":  "b15f84e0-ee8a-4b68-a9b7-08c9eaf72215",
+                                                                  "detectedName":  "êµë¶ì¼ì§",
+                                                                  "matchedName":  null,
+                                                                  "medicationId":  null,
+                                                                  "confidence":  0,
+                                                                  "matchQuality":  "medium",
+                                                                  "needsConfirmation":  true
+                                                              },
+                                                              {
+                                                                  "id":  "392c746b-f42b-463f-9c34-ef30e4e13240",
+                                                                  "detectedName":  "ì²ë°©ì ",
+                                                                  "matchedName":  null,
+                                                                  "medicationId":  null,
+                                                                  "confidence":  0,
+                                                                  "matchQuality":  "none",
+                                                                  "needsConfirmation":  true
+                                                              },
+                                                              {
+                                                                  "id":  "592f9c2d-474b-436e-a3c5-ed0489e41b1d",
+                                                                  "detectedName":  "BURZ",
+                                                                  "matchedName":  null,
+                                                                  "medicationId":  null,
+                                                                  "confidence":  0,
+                                                                  "matchQuality":  "none",
+                                                                  "needsConfirmation":  true
+                                                              },
+                                                              {
+                                                                  "id":  "62684541-bcae-4c38-b2c9-1ec22675ff95",
+                                                                  "detectedName":  "ìë¥ë°±ë²í¸",
+                                                                  "matchedName":  null,
+                                                                  "medicationId":  null,
+                                                                  "confidence":  0,
+                                                                  "matchQuality":  "none",
+                                                                  "needsConfirmation":  true
+                                                              },
+                                                              {
+                                                                  "id":  "b3e60834-9259-4c4e-aa48-bab8cc5742e2",
+                                                                  "detectedName":  "ì²ë°©ìë£ì¸ì",
+                                                                  "matchedName":  null,
+                                                                  "medicationId":  null,
+                                                                  "confidence":  0,
+                                                                  "matchQuality":  "none",
+                                                                  "needsConfirmation":  true
+                                                              },
+                                                              {
+                                                                  "id":  "70d3b142-5a08-4417-9c01-a1c139b7a74f",
+                                                                  "detectedName":  "ìë£ê¸°ê´",
+                                                                  "matchedName":  null,
+                                                                  "medicationId":  null,
+                                                                  "confidence":  0,
+                                                                  "matchQuality":  "none",
+                                                                  "needsConfirmation":  true
+                                                              },
+                                                              {
+                                                                  "id":  "20a8ef16-8e9d-4bcc-9ccf-66ffcc95ac71",
+                                                                  "detectedName":  "ìì ìêµ¬ê° ìë ëìë ëª\u0085ë¶ë¥ê¸°í¸ë¥¼ ê¸°ì¬íì§ ìëí©ëë¤.",
+                                                                  "matchedName":  null,
+                                                                  "medicationId":  null,
+                                                                  "confidence":  0,
+                                                                  "matchQuality":  "none",
+                                                                  "needsConfirmation":  true
+                                                              },
+                                                              {
+                                                                  "id":  "2d8eb026-42fc-425f-b295-cb8a3497c8d2",
+                                                                  "detectedName":  "ììê¸°ê´ë²í¸",
+                                                                  "matchedName":  null,
+                                                                  "medicationId":  null,
+                                                                  "confidence":  0,
+                                                                  "matchQuality":  "none",
+                                                                  "needsConfirmation":  true
+                                                              },
+                                                              {
+                                                                  "id":  "d5779687-0ba0-4170-b080-e0426c05fb9e",
+                                                                  "detectedName":  "(ì½êµ­ì ì¶ì©)",
+                                                                  "matchedName":  null,
+                                                                  "medicationId":  null,
+                                                                  "confidence":  0,
+                                                                  "matchQuality":  "none",
+                                                                  "needsConfirmation":  true
+                                                              },
+                                                              {
+                                                                  "id":  "297ab6cf-a5b3-4f8a-b279-48778b315cf4",
+                                                                  "detectedName":  "í©ì¤ë²í¸",
+                                                                  "matchedName":  null,
+                                                                  "medicationId":  null,
+                                                                  "confidence":  0,
+                                                                  "matchQuality":  "none",
+                                                                  "needsConfirmation":  true
+                                                              },
+                                                              {
+                                                                  "id":  "8f0134a6-12e4-41de-afd9-1fb1dcf202cf",
+                                                                  "detectedName":  "ë©´íë²í¸",
+                                                                  "matchedName":  null,
+                                                                  "medicationId":  null,
+                                                                  "confidence":  0,
+                                                                  "matchQuality":  "none",
+                                                                  "needsConfirmation":  true
+                                                              },
+                                                              {
+                                                                  "id":  "1fefb0cc-4460-4b59-9903-29464f1a642d",
+                                                                  "detectedName":  "ì²ë°©ìì½íì ì",
+                                                                  "matchedName":  null,
+                                                                  "medicationId":  null,
+                                                                  "confidence":  0,
+                                                                  "matchQuality":  "none",
+                                                                  "needsConfirmation":  true
+                                                              },
+                                                              {
+                                                                  "id":  "73f1d1bb-fdcc-454e-8e85-4e968a35af21",
+                                                                  "detectedName":  "ëì´íì í¬ì½ì¼ì",
+                                                                  "matchedName":  null,
+                                                                  "medicationId":  null,
+                                                                  "confidence":  0,
+                                                                  "matchQuality":  "none",
+                                                                  "needsConfirmation":  true
+                                                              },
+                                                              {
+                                                                  "id":  "aa4a685a-e65a-437f-ab73-826f9727bca5",
+                                                                  "detectedName":  "ëì ìì¸",
+                                                                  "matchedName":  null,
+                                                                  "medicationId":  null,
+                                                                  "confidence":  0,
+                                                                  "matchQuality":  "none",
+                                                                  "needsConfirmation":  true
+                                                              },
+                                                              {
+                                                                  "id":  "420e9bcd-7e35-4ef0-8894-432b5a430d90",
+                                                                  "detectedName":  "(6401971)ì¼ë³¸ì¸) 19%(íìë£¨ë¡ ì°ëí¸í¼)(",
+                                                                  "matchedName":  null,
+                                                                  "medicationId":  null,
+                                                                  "confidence":  0,
+                                                                  "matchQuality":  "none",
+                                                                  "needsConfirmation":  true
+                                                              },
+                                                              {
+                                                                  "id":  "3d1a8cfb-44b3-49be-bab7-b7ebf6aed86a",
+                                                                  "detectedName":  "(íìë£¨ë¡ ì°",
+                                                                  "matchedName":  null,
+                                                                  "medicationId":  null,
+                                                                  "confidence":  0,
+                                                                  "matchQuality":  "none",
+                                                                  "needsConfirmation":  true
+                                                              },
+                                                              {
+                                                                  "id":  "c9d3567e-0be2-486e-ae8b-5133a5241106",
+                                                                  "detectedName":  "ë§¤ì(ì²",
+                                                                  "matchedName":  null,
+                                                                  "medicationId":  null,
+                                                                  "confidence":  0,
+                                                                  "matchQuality":  "none",
+                                                                  "needsConfirmation":  true
+                                                              },
+                                                              {
+                                                                  "id":  "de6a2371-811e-400f-947a-35dfb3362ffb",
+                                                                  "detectedName":  "í) ìë³´",
+                                                                  "matchedName":  null,
+                                                                  "medicationId":  null,
+                                                                  "confidence":  0,
+                                                                  "matchQuality":  "none",
+                                                                  "needsConfirmation":  true
+                                                              },
+                                                              {
+                                                                  "id":  "63162963-1459-4e3c-9942-7bb461acf324",
+                                                                  "detectedName":  "1ìê°ë§ë¤ ì¬ì©íì¸ì",
+                                                                  "matchedName":  null,
+                                                                  "medicationId":  null,
+                                                                  "confidence":  0,
+                                                                  "matchQuality":  "none",
+                                                                  "needsConfirmation":  true
+                                                              },
+                                                              {
+                                                                  "id":  "1c6cd3b0-c83a-49a6-9b63-b96e2278d093",
+                                                                  "detectedName":  "ì£¼ì¬ì  ì²ë°© ë´ì­ (ìì¡°ì¬ (1. ì¸ì¹",
+                                                                  "matchedName":  null,
+                                                                  "medicationId":  null,
+                                                                  "confidence":  0,
+                                                                  "matchQuality":  "none",
+                                                                  "needsConfirmation":  true
+                                                              },
+                                                              {
+                                                                  "id":  "57393b3c-3835-41ed-a4b9-4e7324b2d053",
+                                                                  "detectedName":  "ì¡°ì ì ê³ ì¬í",
+                                                                  "matchedName":  null,
+                                                                  "medicationId":  null,
+                                                                  "confidence":  0,
+                                                                  "matchQuality":  "none",
+                                                                  "needsConfirmation":  true
+                                                              },
+                                                              {
+                                                                  "id":  "bf8c726c-014a-4ec8-8d08-3ba8ed5c32ac",
+                                                                  "detectedName":  "ëì²´ì¡°ì  ê°ë¥í©ëë¤.",
+                                                                  "matchedName":  null,
+                                                                  "medicationId":  null,
+                                                                  "confidence":  0,
+                                                                  "matchQuality":  "none",
+                                                                  "needsConfirmation":  true
+                                                              },
+                                                              {
+                                                                  "id":  "2b9b2599-939b-481c-aa03-4a14dc938ba5",
+                                                                  "detectedName":  "ë³ìì íµíë ê²°ê³¼",
+                                                                  "matchedName":  null,
+                                                                  "medicationId":  null,
+                                                                  "confidence":  0,
+                                                                  "matchQuality":  "none",
+                                                                  "needsConfirmation":  true
+                                                              }
+                                                          ]
+                                         },
+                             "confirm":  null
+                         },
+                         {
+                             "image":  "prescription_5.jpg",
+                             "scanId":  "b2601733-377c-4e77-aa30-698b0ddb67f6",
+                             "uploadOk":  true,
+                             "scanInsertOk":  true,
+                             "googleOcr":  {
+                                               "ok":  true,
+                                               "confidence":  0.734832315897436,
+                                               "ocrTextLength":  616,
+                                               "needsManualReview":  false,
+                                               "failureReason":  null,
+                                               "imageDeleted":  true,
+                                               "pharmacyName":  "ì¼ê° *ì¬ì©ê¸°ê°ë´ì ì½êµ­ì ì ì¶íì¬ì¼ í©ëë¤.",
+                                               "pharmacyPhone":  "64890088",
+                                               "preview":  "[ë³ì§ ì 10í¸ì]\nì²\në°©\nì \nì²ë°© ìì½íì ëª\u0085ì¹­\n648900880 ì§ì¤ë¡ë§¥ì¤ì 250mg(ë´)\n1í 1ì¼\n2 1\n6555014"
+                                           },
+                             "analyze":  {
+                                             "ok":  true,
+                                             "resultMode":  "review_required",
+                                             "matchQuality":  "medium",
+                                             "detectedCount":  25,
+                                             "matchedCount":  1,
+                                             "needsUserConfirmation":  true,
+                                             "autoDisplayReady":  false,
+                                             "publicLookupStatus":  "succeeded",
+                                             "unmatchedCandidates":  [
+                                                                         "[ë³ì§ ì 10í¸ì]",
+                                                                         "ì²ë°© ìì½íì ëª\u0085ì¹­",
+                                                                         "648900880 ì§ì¤ë¡ë§¥ì¤ì 250mg(ë´)",
+                                                                         "1í 1ì¼",
+                                                                         "655501400 ìë¦¬ì°ì¤",
+                                                                         "643501510 ì¤í°ì´ììë°©ì (ë´ë¶)",
+                                                                         "ì¤í°ì´ììë°©ì ",
+                                                                         "642102000 í°ë¬ê°ë´ë³µ)",
+                                                                         "(ìêµ­ì)",
+                                                                         "ìì",
+                                                                         "ìí",
+                                                                         "ì¡°ì¬ì ì°¸ê³ ì¬í­",
+                                                                         "ì£¼ì¬ì  ì²ë°©ë´ì(ìì¡°ì  ã\u0085.",
+                                                                         "ìì¸ì²ë°© )",
+                                                                         "ì¬ì©ê¸°ê° êµë¶ì¼ë¡ë¶í° ( 7",
+                                                                         "ì¼ê° ì¬ì©ê¸°ê°ë´ì ì½êµ­ì ì ì¶íì¬ì¼ í©ëë¤.",
+                                                                         "ì ì½",
+                                                                         "ì¡° ì¡°ì ê¸°ê´ì",
+                                                                         "ì²ë°©ì ë³ê²½",
+                                                                         "ìì ",
+                                                                         "íì¸ëì²´ì ê·¸ ë´ì© ë±",
+                                                                         "ì¡°ì  ì½ì¬ ì±ëª\u0085",
+                                                                         "(ìëª\u0085 ëë ë ì¸)",
+                                                                         "ì¡°ì§",
+                                                                         "(ì´ê³í¨ì)",
+                                                                         "ì¡°ì¬ë\u0085ìì¼",
+                                                                         "NEWSIS",
+                                                                         "80a)"
+                                                                     ],
+                                             "detected":  [
+                                                              {
+                                                                  "id":  "8cf77bed-3d35-479d-97e7-a67e72c21b92",
+                                                                  "detectedName":  "ì§ì¤ë¡ë§¥ì¤ì ",
+                                                                  "matchedName":  "ì§ì¤ë¡ë§¥ì¤ì 250ë°ë¦¬ê·¸ë(ìì§í¸ë¡ë§ì´ì ìíë¬¼)",
+                                                                  "medicationId":  "b2f40a2e-58f9-418c-be51-450c2d3f8944",
+                                                                  "confidence":  0.230769,
+                                                                  "matchQuality":  "low",
+                                                                  "needsConfirmation":  true
+                                                              },
+                                                              {
+                                                                  "id":  "d40a98bd-a412-430e-a55d-298d6b6bce81",
+                                                                  "detectedName":  "ì²ë°© ìì½íì ëª\u0085ì¹­",
+                                                                  "matchedName":  null,
+                                                                  "medicationId":  null,
+                                                                  "confidence":  0,
+                                                                  "matchQuality":  "none",
+                                                                  "needsConfirmation":  true
+                                                              },
+                                                              {
+                                                                  "id":  "7b0deb6c-60ea-49ef-b410-d625957ffb6c",
+                                                                  "detectedName":  "648900880 ì§ì¤ë¡ë§¥ì¤ì 250mg(ë´)",
+                                                                  "matchedName":  null,
+                                                                  "medicationId":  null,
+                                                                  "confidence":  0,
+                                                                  "matchQuality":  "medium",
+                                                                  "needsConfirmation":  true
+                                                              },
+                                                              {
+                                                                  "id":  "1a0c6afe-1298-443d-99e9-15a05d34d4eb",
+                                                                  "detectedName":  "1í 1ì¼",
+                                                                  "matchedName":  null,
+                                                                  "medicationId":  null,
+                                                                  "confidence":  0,
+                                                                  "matchQuality":  "none",
+                                                                  "needsConfirmation":  true
+                                                              },
+                                                              {
+                                                                  "id":  "aa48fabb-9448-4785-b5b9-254bfc4fcb8f",
+                                                                  "detectedName":  "655501400 ìë¦¬ì°ì¤",
+                                                                  "matchedName":  null,
+                                                                  "medicationId":  null,
+                                                                  "confidence":  0,
+                                                                  "matchQuality":  "medium",
+                                                                  "needsConfirmation":  true
+                                                              },
+                                                              {
+                                                                  "id":  "33734151-c545-4a2a-bf49-0270ca52b5da",
+                                                                  "detectedName":  "643501510 ì¤í°ì´ììë°©ì (ë´ë¶)",
+                                                                  "matchedName":  null,
+                                                                  "medicationId":  null,
+                                                                  "confidence":  0,
+                                                                  "matchQuality":  "medium",
+                                                                  "needsConfirmation":  true
+                                                              },
+                                                              {
+                                                                  "id":  "00f03fc8-53ff-4b27-a265-66881c7faedb",
+                                                                  "detectedName":  "ì¤í°ì´ììë°©ì ",
+                                                                  "matchedName":  null,
+                                                                  "medicationId":  null,
+                                                                  "confidence":  0,
+                                                                  "matchQuality":  "medium",
+                                                                  "needsConfirmation":  true
+                                                              },
+                                                              {
+                                                                  "id":  "f280e236-829a-44f2-8716-135da2ce64f8",
+                                                                  "detectedName":  "642102000 í°ë¬ê°ë´ë³µ)",
+                                                                  "matchedName":  null,
+                                                                  "medicationId":  null,
+                                                                  "confidence":  0,
+                                                                  "matchQuality":  "none",
+                                                                  "needsConfirmation":  true
+                                                              },
+                                                              {
+                                                                  "id":  "da7b4a18-d28d-4963-a5b9-11e9fdba0f86",
+                                                                  "detectedName":  "(ìêµ­ì)",
+                                                                  "matchedName":  null,
+                                                                  "medicationId":  null,
+                                                                  "confidence":  0,
+                                                                  "matchQuality":  "none",
+                                                                  "needsConfirmation":  true
+                                                              },
+                                                              {
+                                                                  "id":  "260118e8-a163-4621-877b-67190a942481",
+                                                                  "detectedName":  "ì¡°ì¬ì ì°¸ê³ ì¬í­",
+                                                                  "matchedName":  null,
+                                                                  "medicationId":  null,
+                                                                  "confidence":  0,
+                                                                  "matchQuality":  "none",
+                                                                  "needsConfirmation":  true
+                                                              },
+                                                              {
+                                                                  "id":  "5ec05f91-fdcc-4abe-afd7-035d4dd178d9",
+                                                                  "detectedName":  "ì£¼ì¬ì  ì²ë°©ë´ì(ìì¡°ì  ã\u0085.",
+                                                                  "matchedName":  null,
+                                                                  "medicationId":  null,
+                                                                  "confidence":  0,
+                                                                  "matchQuality":  "none",
+                                                                  "needsConfirmation":  true
+                                                              },
+                                                              {
+                                                                  "id":  "73e6c1d7-61de-4d4f-94d3-2f4c0c6b200c",
+                                                                  "detectedName":  "ìì¸ì²ë°© )",
+                                                                  "matchedName":  null,
+                                                                  "medicationId":  null,
+                                                                  "confidence":  0,
+                                                                  "matchQuality":  "none",
+                                                                  "needsConfirmation":  true
+                                                              },
+                                                              {
+                                                                  "id":  "52aa0987-e35d-4d5c-b1b0-47059baeea84",
+                                                                  "detectedName":  "ì¬ì©ê¸°ê° êµë¶ì¼ë¡ë¶í° ( 7",
+                                                                  "matchedName":  null,
+                                                                  "medicationId":  null,
+                                                                  "confidence":  0,
+                                                                  "matchQuality":  "none",
+                                                                  "needsConfirmation":  true
+                                                              },
+                                                              {
+                                                                  "id":  "2696c204-97ef-4073-91f7-554d715d7703",
+                                                                  "detectedName":  "ì¼ê° ì¬ì©ê¸°ê°ë´ì ì½êµ­ì ì ì¶íì¬ì¼ í©ëë¤.",
+                                                                  "matchedName":  null,
+                                                                  "medicationId":  null,
+                                                                  "confidence":  0,
+                                                                  "matchQuality":  "none",
+                                                                  "needsConfirmation":  true
+                                                              },
+                                                              {
+                                                                  "id":  "6eacf204-6f06-4dd0-9172-174eeb9f5b05",
+                                                                  "detectedName":  "ì ì½",
+                                                                  "matchedName":  null,
+                                                                  "medicationId":  null,
+                                                                  "confidence":  0,
+                                                                  "matchQuality":  "none",
+                                                                  "needsConfirmation":  true
+                                                              },
+                                                              {
+                                                                  "id":  "5086ed4c-ad52-4838-91a7-5a91cdb66e2d",
+                                                                  "detectedName":  "ì¡° ì¡°ì ê¸°ê´ì",
+                                                                  "matchedName":  null,
+                                                                  "medicationId":  null,
+                                                                  "confidence":  0,
+                                                                  "matchQuality":  "none",
+                                                                  "needsConfirmation":  true
+                                                              },
+                                                              {
+                                                                  "id":  "70ecea8d-7dd0-4a40-92b7-207187b8167c",
+                                                                  "detectedName":  "ì²ë°©ì ë³ê²½",
+                                                                  "matchedName":  null,
+                                                                  "medicationId":  null,
+                                                                  "confidence":  0,
+                                                                  "matchQuality":  "none",
+                                                                  "needsConfirmation":  true
+                                                              },
+                                                              {
+                                                                  "id":  "a7a31093-cd10-4efe-aa7d-20f0675e9137",
+                                                                  "detectedName":  "íì¸ëì²´ì ê·¸ ë´ì© ë±",
+                                                                  "matchedName":  null,
+                                                                  "medicationId":  null,
+                                                                  "confidence":  0,
+                                                                  "matchQuality":  "none",
+                                                                  "needsConfirmation":  true
+                                                              },
+                                                              {
+                                                                  "id":  "7be6a851-5d48-4274-af1c-bd473db928cf",
+                                                                  "detectedName":  "ì¡°ì  ì½ì¬ ì±ëª\u0085",
+                                                                  "matchedName":  null,
+                                                                  "medicationId":  null,
+                                                                  "confidence":  0,
+                                                                  "matchQuality":  "none",
+                                                                  "needsConfirmation":  true
+                                                              },
+                                                              {
+                                                                  "id":  "6b7431bd-f0a1-4cb4-a994-519bcbbe88a3",
+                                                                  "detectedName":  "(ìëª\u0085 ëë ë ì¸)",
+                                                                  "matchedName":  null,
+                                                                  "medicationId":  null,
+                                                                  "confidence":  0,
+                                                                  "matchQuality":  "none",
+                                                                  "needsConfirmation":  true
+                                                              },
+                                                              {
+                                                                  "id":  "f3552ecd-577b-4b67-9c00-a425bd181313",
+                                                                  "detectedName":  "(ì´ê³í¨ì)",
+                                                                  "matchedName":  null,
+                                                                  "medicationId":  null,
+                                                                  "confidence":  0,
+                                                                  "matchQuality":  "none",
+                                                                  "needsConfirmation":  true
+                                                              },
+                                                              {
+                                                                  "id":  "83bc77e3-adba-4e0c-a078-bb8640e375d8",
+                                                                  "detectedName":  "ì¡°ì¬ë\u0085ìì¼",
+                                                                  "matchedName":  null,
+                                                                  "medicationId":  null,
+                                                                  "confidence":  0,
+                                                                  "matchQuality":  "none",
+                                                                  "needsConfirmation":  true
+                                                              },
+                                                              {
+                                                                  "id":  "3f82024b-f7f9-4d85-b734-2f5e4dd27bce",
+                                                                  "detectedName":  "NEWSIS",
+                                                                  "matchedName":  null,
+                                                                  "medicationId":  null,
+                                                                  "confidence":  0,
+                                                                  "matchQuality":  "none",
+                                                                  "needsConfirmation":  true
+                                                              },
+                                                              {
+                                                                  "id":  "302dda12-d83a-4b83-b15d-8cdb4b4e625d",
+                                                                  "detectedName":  "[ë³ì§ ì 10í¸ì]",
+                                                                  "matchedName":  null,
+                                                                  "medicationId":  null,
+                                                                  "confidence":  0,
+                                                                  "matchQuality":  "medium",
+                                                                  "needsConfirmation":  true
+                                                              },
+                                                              {
+                                                                  "id":  "ba6f9701-452a-438d-bf21-8b42bda2374d",
+                                                                  "detectedName":  "80a)",
+                                                                  "matchedName":  null,
+                                                                  "medicationId":  null,
+                                                                  "confidence":  0,
+                                                                  "matchQuality":  "none",
+                                                                  "needsConfirmation":  true
+                                                              }
+                                                          ]
+                                         },
+                             "confirm":  {
+                                             "ok":  true,
+                                             "alreadyExists":  false,
+                                             "userMedicationId":  "e0751533-85e2-4b2e-a812-df292673ba21",
+                                             "medicationId":  "b2f40a2e-58f9-418c-be51-450c2d3f8944",
+                                             "sourceScanId":  "b2601733-377c-4e77-aa30-698b0ddb67f6"
+                                         }
+                         }
+                     ],
+    "confirmedMedication":  {
+                                "image":  "prescription_5.jpg",
+                                "scanId":  "b2601733-377c-4e77-aa30-698b0ddb67f6",
+                                "detectedMedicationId":  "8cf77bed-3d35-479d-97e7-a67e72c21b92",
+                                "matchedName":  "ì§ì¤ë¡ë§¥ì¤ì 250ë°ë¦¬ê·¸ë(ìì§í¸ë¡ë§ì´ì ìíë¬¼)",
+                                "userMedicationId":  "e0751533-85e2-4b2e-a812-df292673ba21",
+                                "medicationId":  "b2f40a2e-58f9-418c-be51-450c2d3f8944"
+                            },
+    "scheduleE2E":  {
+                        "date":  "2026-05-24",
+                        "dayOfWeek":  0,
+                        "suggestOk":  true,
+                        "suggestionCount":  0,
+                        "usedFallbackSchedule":  true,
+                        "scheduleOk":  true,
+                        "scheduleId":  "363b2bbf-1f8f-4a72-a6ec-a71a14366a40",
+                        "checklistBeforeOk":  true,
+                        "checklistBeforeSummary":  {
+                                                       "total":  1,
+                                                       "pending":  1,
+                                                       "taken":  0,
+                                                       "missed":  0,
+                                                       "skipped":  0
+                                                   },
+                        "logOk":  true,
+                        "logStatus":  "taken",
+                        "checklistAfterOk":  true,
+                        "checklistAfterSummary":  {
+                                                      "total":  1,
+                                                      "pending":  0,
+                                                      "taken":  1,
+                                                      "missed":  0,
+                                                      "skipped":  0
+                                                  },
+                        "errors":  [
+
+                                   ]
+                    },
+    "cleanup":  {
+                    "tempUserDeleted":  true
+                }
+}

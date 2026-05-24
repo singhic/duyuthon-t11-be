@@ -4,6 +4,16 @@ export type RedactExpiredSensitiveDataRequest = {
   dryRun?: boolean;
 };
 
+type ExpiredScanImage = {
+  id: string;
+  image_path: string;
+};
+
+const SCAN_IMAGE_STORAGE_BUCKET = "prescription-temp";
+const SCAN_IMAGE_DELETE_CHUNK_SIZE = 100;
+const SCAN_IMAGE_QUERY_PAGE_SIZE = 1000;
+const FAILED_IMAGE_PATH_SAMPLE_LIMIT = 20;
+
 async function countRows(
   serviceClient: SupabaseClient,
   table: string,
@@ -18,6 +28,99 @@ async function countRows(
   return count ?? 0;
 }
 
+async function loadExpiredScanImages(
+  serviceClient: SupabaseClient,
+  now: string,
+): Promise<ExpiredScanImage[]> {
+  const rows: ExpiredScanImage[] = [];
+  let from = 0;
+
+  while (true) {
+    const { data, error } = await serviceClient
+      .from("scan_sessions")
+      .select("id,image_path")
+      .lte("expires_at", now)
+      .is("image_deleted_at", null)
+      .not("image_path", "is", null)
+      .order("expires_at", { ascending: true })
+      .range(from, from + SCAN_IMAGE_QUERY_PAGE_SIZE - 1);
+
+    if (error) throw error;
+
+    const page = (data ?? [])
+      .filter((row): row is ExpiredScanImage =>
+        typeof row.id === "string" &&
+        typeof row.image_path === "string" &&
+        row.image_path.length > 0
+      );
+
+    rows.push(...page);
+
+    if ((data ?? []).length < SCAN_IMAGE_QUERY_PAGE_SIZE) break;
+    from += SCAN_IMAGE_QUERY_PAGE_SIZE;
+  }
+
+  return rows;
+}
+
+function chunkRows<T>(rows: T[], chunkSize: number): T[][] {
+  const chunks: T[][] = [];
+  for (let index = 0; index < rows.length; index += chunkSize) {
+    chunks.push(rows.slice(index, index + chunkSize));
+  }
+  return chunks;
+}
+
+async function deleteExpiredScanImages(
+  serviceClient: SupabaseClient,
+  rows: ExpiredScanImage[],
+  deletedAt: string,
+): Promise<{
+  scanImageDeletedCount: number;
+  scanImageFailedCount: number;
+  failedScanImagePaths: string[];
+}> {
+  let scanImageDeletedCount = 0;
+  const failedScanImagePaths: string[] = [];
+
+  for (const chunk of chunkRows(rows, SCAN_IMAGE_DELETE_CHUNK_SIZE)) {
+    const paths = chunk.map((row) => row.image_path);
+    const ids = chunk.map((row) => row.id);
+
+    const { error: storageError } = await serviceClient.storage
+      .from(SCAN_IMAGE_STORAGE_BUCKET)
+      .remove(paths);
+
+    if (storageError) {
+      failedScanImagePaths.push(...paths);
+      continue;
+    }
+
+    const { error: updateError } = await serviceClient
+      .from("scan_sessions")
+      .update({
+        image_path: null,
+        image_deleted_at: deletedAt,
+      })
+      .in("id", ids)
+      .is("image_deleted_at", null)
+      .not("image_path", "is", null);
+
+    if (updateError) {
+      failedScanImagePaths.push(...paths);
+      continue;
+    }
+
+    scanImageDeletedCount += chunk.length;
+  }
+
+  return {
+    scanImageDeletedCount,
+    scanImageFailedCount: rows.length - scanImageDeletedCount,
+    failedScanImagePaths: failedScanImagePaths.slice(0, FAILED_IMAGE_PATH_SAMPLE_LIMIT),
+  };
+}
+
 export async function runRedactExpiredSensitiveData(
   serviceClient: SupabaseClient,
   body: RedactExpiredSensitiveDataRequest,
@@ -26,6 +129,8 @@ export async function runRedactExpiredSensitiveData(
   const dryRun = body.dryRun ?? true;
   const now = new Date().toISOString();
 
+  const expiredScanImages = await loadExpiredScanImages(serviceClient, now);
+  const scanImageCount = expiredScanImages.length;
   const scanOcrTextCount = await countRows(
     serviceClient,
     "scan_sessions",
@@ -56,6 +161,7 @@ export async function runRedactExpiredSensitiveData(
       dryRun,
       scannedAt: now,
       targets: {
+        scanImageCount,
         scanOcrTextCount,
         ocrResultCount,
         chatMessageCount,
@@ -98,11 +204,21 @@ export async function runRedactExpiredSensitiveData(
     if (chatError) throw chatError;
   }
 
+  const {
+    scanImageDeletedCount,
+    scanImageFailedCount,
+    failedScanImagePaths,
+  } = await deleteExpiredScanImages(serviceClient, expiredScanImages, now);
+
   await serviceClient.from("audit_logs").insert({
     actor_user_id: options.actorUserId ?? null,
     action: "redact_expired_sensitive_data",
     target_type: "maintenance",
     metadata: {
+      scanImageCount,
+      scanImageDeletedCount,
+      scanImageFailedCount,
+      failedScanImagePaths,
       scanOcrTextCount,
       ocrResultCount,
       chatMessageCount,
@@ -114,6 +230,10 @@ export async function runRedactExpiredSensitiveData(
     dryRun,
     redactedAt: now,
     redacted: {
+      scanImageCount,
+      scanImageDeletedCount,
+      scanImageFailedCount,
+      failedScanImagePaths,
       scanOcrTextCount,
       ocrResultCount,
       chatMessageCount,

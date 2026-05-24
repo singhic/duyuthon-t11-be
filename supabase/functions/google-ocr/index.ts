@@ -166,6 +166,20 @@ async function restSelectSingle<T>(path: string): Promise<T | null> {
   return body as T;
 }
 
+async function restSelectFirst<T>(path: string): Promise<T | null> {
+  const separator = path.includes("?") ? "&" : "?";
+  const response = await fetch(`${requireEnv("SUPABASE_URL")}/rest/v1/${path}${separator}limit=1`, {
+    headers: serviceHeaders(),
+  });
+
+  const body = await response.json();
+  if (!response.ok) {
+    throw new HttpError(response.status, "Supabase REST select failed", body);
+  }
+
+  return Array.isArray(body) && body.length > 0 ? body[0] as T : null;
+}
+
 async function restInsertSingle<T>(table: string, payload: unknown): Promise<T> {
   const response = await fetch(`${requireEnv("SUPABASE_URL")}/rest/v1/${table}?select=*`, {
     method: "POST",
@@ -188,7 +202,8 @@ async function restInsertSingle<T>(table: string, payload: unknown): Promise<T> 
 async function upsertOcrPharmacy(contact: PharmacyContact | null): Promise<string | null> {
   if (!contact) return null;
 
-  const normalizedName = normalizePharmacyName(contact.name);
+  const storedName = contact.name ?? "OCR 약국 정보";
+  const normalizedName = normalizePharmacyName(storedName);
   const normalizedPhone = normalizePhoneDigits(contact.phone);
   if (!normalizedName && !normalizedPhone) return null;
 
@@ -201,7 +216,7 @@ async function upsertOcrPharmacy(contact: PharmacyContact | null): Promise<strin
       : "normalized_phone=is.null",
   ].join("&");
   const payload = {
-    name: contact.name ?? contact.phone ?? "OCR 약국 정보",
+    name: storedName,
     phone: contact.phone,
     address: contact.address,
     source: "ocr",
@@ -225,6 +240,17 @@ async function upsertOcrPharmacy(contact: PharmacyContact | null): Promise<strin
       `pharmacies?select=id&${filters}`,
     );
     if (retried) return retried.id;
+
+    if (normalizedPhone) {
+      const phoneMatched = await restSelectFirst<{ id: string }>(
+        `pharmacies?select=id&normalized_phone=eq.${encodeURIComponent(normalizedPhone)}&order=created_at.asc`,
+      );
+      if (phoneMatched) {
+        await restPatch("pharmacies", `id=eq.${encodeURIComponent(phoneMatched.id)}`, payload);
+        return phoneMatched.id;
+      }
+    }
+
     throw error;
   }
 }

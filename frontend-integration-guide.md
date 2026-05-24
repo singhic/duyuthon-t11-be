@@ -227,6 +227,14 @@ export async function ensureUserProfile() {
 9. 필요 시 delete-scan-image Edge Function 호출
 ```
 
+이미지 보관 정책:
+
+- OCR 성공 시 백엔드가 원본 이미지를 즉시 삭제하고 `scan_sessions.image_path`를 비운다.
+- 프론트는 OCR/분석 완료 후 가능하면 `delete-scan-image`를 best-effort로 호출한다.
+- 앱 종료, 네트워크 장애, 화면 이탈 등으로 즉시 삭제 호출이 누락되어도 만료된 scan session의 남은 원본 이미지는 백엔드 redaction job이 TTL 기준으로 정리한다.
+- 기본 TTL은 `scan_sessions.expires_at` 기준이며 현재 생성 후 30일이다.
+- TTL cleanup은 scan session row 자체를 삭제하지 않고 Storage object 삭제 후 `image_path=null`, `image_deleted_at` 기록만 남긴다.
+
 ## 5. 공통 API 호출 규칙
 
 모든 Edge Function은 로그인 세션이 필요하다. 프론트에서는 `supabase.functions.invoke()`를 사용하면 현재 세션의 Authorization header가 자동으로 포함된다.
@@ -796,6 +804,11 @@ export async function deleteScanImage(scanId: string) {
 - OCR/분석 완료 직후 자동 호출
 - 실패 시 조용히 재시도 큐에 넣기
 - 사용자에게 원본 이미지를 장기 보관하지 않는다고 안내
+
+백엔드 fallback:
+
+- `delete-scan-image` 호출이 누락되어도 `scan_sessions.expires_at`이 지난 뒤 redaction job이 `prescription-temp`에 남은 원본 이미지를 정리한다.
+- 이 fallback은 즉시 삭제 UX를 대체하지 않는다. 민감 이미지 노출 시간을 줄이기 위해 프론트는 가능한 순간에 `delete-scan-image`를 호출한다.
 
 ## 11. 챗봇 호출
 

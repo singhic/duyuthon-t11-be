@@ -211,6 +211,7 @@ FCM 전송 조건:
   - 관리자 전용
   - 기본 `dryRun=true`
   - 만료된 OCR 원문, OCR 원본 JSON, 챗봇 메시지 본문을 삭제/마스킹
+  - 만료된 scan session에 남은 `prescription-temp` 원본 이미지를 Storage에서 삭제하고 `image_path=null`, `image_deleted_at`으로 정리
 - `maintenance-runner` 운영 wrapper 추가
   - `CRON_SECRET` header 기반
   - scheduled job은 기존 admin JWT 함수가 아니라 이 wrapper만 호출
@@ -249,6 +250,9 @@ FCM 전송 조건:
    - 공공 API 실패 시에도 내부 DB 기준 분석 결과는 반환한다.
 5. 사용자가 후보 약품을 확인하면 `confirm-medication`을 호출한다.
 6. 결과 확인 후 필요하면 `delete-scan-image`를 호출한다.
+   - OCR 성공 시 백엔드는 원본 이미지 즉시 삭제를 시도한다.
+   - 즉시 삭제가 누락되어도 `scan_sessions.expires_at` 이후 redaction job이 `prescription-temp`에 남은 원본 이미지를 TTL 기준으로 정리한다.
+   - scan session row 자체는 삭제하지 않는다.
 
 요청 예시:
 
@@ -326,17 +330,18 @@ Scheduled job 전용 운영 wrapper:
 }
 ```
 
-2026-05-24 12:35 KST 기준 운영 스냅샷:
+2026-05-24 15:16 KST 기준 운영 스냅샷:
 
 - `maintenance-runner` cron secret 없는 호출은 `401`
 - `operation_snapshot` cron-secret 호출은 `200`
-- `medications = 847`, `item_seq` 보유 847
+- `medications = 848`, `item_seq` 보유 848
 - 주요 약품 정보 누락: 효능/복용법/주의사항/보관법 각 4건
 - `drug_interactions = 19`, `source=mfds_dur_usjnt_taboo` 18건
 - DUR known medications 최근 성공 cursor: `42 -> 52`
 - `medicationLimit=20` 실행에서 `IDLE_TIMEOUT` 실패 이력이 있어 scheduled job은 `medicationLimit=10` 유지
 - `notification_tokens = 0`, reminder dry-run pending 0
 - redaction dry-run 대상 0건
+- 테스트 전용 만료 scan image 1건 실삭제 검증 통과: `scanImageDeletedCount=1`, `scanImageFailedCount=0`, DB `image_path=null`, Storage metadata 제거 확인
 
 운영자 DUR batch 동기화:
 
@@ -405,6 +410,6 @@ Scheduled job 전용 운영 wrapper:
 - 약물 상호작용 DB 출처 확보
 - OCR 후보 추출 알고리즘 개선
 - 사용자별 rate limit 추가
-- scheduled function으로 오래된 OCR/채팅 민감정보 자동 정리
-- scheduled job으로 `send-medication-reminders`와 `redact-expired-sensitive-data` 주기 호출 설정
+- redaction 실삭제 전 운영자 승인과 감사 로그 확인
+- FCM token 저장 후 `send-medication-reminders` 실발송 controlled test
 - 의료 전문가 검수용 테스트셋 구축
