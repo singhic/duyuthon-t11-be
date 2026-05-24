@@ -107,6 +107,7 @@ $summary = [ordered]@{
   imageResults = @()
   confirmedMedication = $null
   scheduleE2E = $null
+  chatContextChecks = @()
   cleanup = @{}
 }
 
@@ -327,7 +328,7 @@ try {
       $firstSuggestion = @($suggest.data.suggestions)[0]
     }
 
-    $takeTime = if ($firstSuggestion) { $firstSuggestion.takeTime } else { "09:00:00" }
+    $takeTimes = if ($firstSuggestion) { @($firstSuggestion.takeTime) } else { @("09:00:00", "21:00:00") }
     $timingRule = if ($firstSuggestion) { $firstSuggestion.timingRule } else { "custom" }
     $doseAmount = if ($firstSuggestion -and $null -ne $firstSuggestion.doseAmount) { $firstSuggestion.doseAmount } else { 1 }
     $doseUnit = if ($firstSuggestion -and $firstSuggestion.doseUnit) { $firstSuggestion.doseUnit } else { "tablet" }
@@ -338,7 +339,7 @@ try {
       -Headers $authHeaders `
       -Body @{
         userMedicationId = $userMedicationId
-        takeTime = $takeTime
+        takeTimes = $takeTimes
         timingRule = $timingRule
         doseAmount = $doseAmount
         doseUnit = $doseUnit
@@ -356,15 +357,16 @@ try {
     $log = $null
     $checkAfter = $null
     if ($schedule.ok) {
+      $firstSchedule = @($schedule.data.schedules)[0]
       $log = Invoke-JsonRequest `
         -Uri "$SupabaseUrl/functions/v1/medication-logs-check" `
         -Method Post `
         -Headers $authHeaders `
         -Body @{
           userMedicationId = $userMedicationId
-          scheduleId = $schedule.data.schedule.id
+          scheduleId = $firstSchedule.id
           plannedDate = $today
-          plannedTime = $schedule.data.schedule.take_time
+          plannedTime = $firstSchedule.take_time
           status = "taken"
         }
 
@@ -375,6 +377,63 @@ try {
         -Body @{ date = $today }
     }
 
+    $confirmExisting = Invoke-JsonRequest `
+      -Uri "$SupabaseUrl/functions/v1/confirm-medication" `
+      -Method Post `
+      -Headers $authHeaders `
+      -Body @{
+        detectedMedicationId = $summary.confirmedMedication.detectedMedicationId
+        startDate = $today
+      }
+
+    $chatUserMedication = Invoke-JsonRequest `
+      -Uri "$SupabaseUrl/functions/v1/gemini-chat" `
+      -Method Post `
+      -Headers $authHeaders `
+      -Body @{
+        question = "show prompt"
+        userMedicationId = $userMedicationId
+      }
+
+    $chatDetectedMedication = Invoke-JsonRequest `
+      -Uri "$SupabaseUrl/functions/v1/gemini-chat" `
+      -Method Post `
+      -Headers $authHeaders `
+      -Body @{
+        question = "show prompt"
+        detectedMedicationId = $summary.confirmedMedication.detectedMedicationId
+      }
+
+    $chatMedicationMaster = Invoke-JsonRequest `
+      -Uri "$SupabaseUrl/functions/v1/gemini-chat" `
+      -Method Post `
+      -Headers $authHeaders `
+      -Body @{
+        question = "show prompt"
+        medicationId = $summary.confirmedMedication.medicationId
+      }
+
+    $summary.chatContextChecks = @(
+      [ordered]@{
+        request = "userMedicationId"
+        ok = $chatUserMedication.ok
+        source = if ($chatUserMedication.ok) { $chatUserMedication.data.selectedMedicationContext.source } else { $null }
+        error = if ($chatUserMedication.ok) { $null } else { $chatUserMedication.error }
+      },
+      [ordered]@{
+        request = "detectedMedicationId"
+        ok = $chatDetectedMedication.ok
+        source = if ($chatDetectedMedication.ok) { $chatDetectedMedication.data.selectedMedicationContext.source } else { $null }
+        error = if ($chatDetectedMedication.ok) { $null } else { $chatDetectedMedication.error }
+      },
+      [ordered]@{
+        request = "medicationId"
+        ok = $chatMedicationMaster.ok
+        source = if ($chatMedicationMaster.ok) { $chatMedicationMaster.data.selectedMedicationContext.source } else { $null }
+        error = if ($chatMedicationMaster.ok) { $null } else { $chatMedicationMaster.error }
+      }
+    )
+
     $summary.scheduleE2E = [ordered]@{
       date = $today
       dayOfWeek = $dow
@@ -382,7 +441,11 @@ try {
       suggestionCount = if ($suggest.ok) { @($suggest.data.suggestions).Count } else { 0 }
       usedFallbackSchedule = ($null -eq $firstSuggestion)
       scheduleOk = $schedule.ok
+      scheduleCount = if ($schedule.ok) { @($schedule.data.schedules).Count } else { 0 }
       scheduleId = if ($schedule.ok) { $schedule.data.schedule.id } else { $null }
+      confirmExistingOk = $confirmExisting.ok
+      confirmExistingAlreadyExists = if ($confirmExisting.ok) { $confirmExisting.data.alreadyExists } else { $null }
+      confirmExistingScheduleCount = if ($confirmExisting.ok) { @($confirmExisting.data.schedules).Count } else { 0 }
       checklistBeforeOk = $checkBefore.ok
       checklistBeforeSummary = if ($checkBefore.ok) { $checkBefore.data.summary } else { $null }
       logOk = if ($log) { $log.ok } else { $false }
@@ -392,6 +455,7 @@ try {
       errors = @(
         if (-not $suggest.ok) { "suggest: $($suggest.error)" }
         if (-not $schedule.ok) { "schedule: $($schedule.error)" }
+        if (-not $confirmExisting.ok) { "confirmExisting: $($confirmExisting.error)" }
         if (-not $checkBefore.ok) { "checkBefore: $($checkBefore.error)" }
         if ($log -and -not $log.ok) { "log: $($log.error)" }
         if ($checkAfter -and -not $checkAfter.ok) { "checkAfter: $($checkAfter.error)" }
@@ -469,7 +533,8 @@ if ($summary.confirmedMedication) {
 if ($summary.scheduleE2E) {
   $lines.Add("- suggest call: $($summary.scheduleE2E.suggestOk), suggestion count: $($summary.scheduleE2E.suggestionCount)")
   $lines.Add("- fallback schedule used: $($summary.scheduleE2E.usedFallbackSchedule)")
-  $lines.Add("- schedule created: $($summary.scheduleE2E.scheduleOk)")
+  $lines.Add("- schedule created: $($summary.scheduleE2E.scheduleOk), count: $($summary.scheduleE2E.scheduleCount)")
+  $lines.Add("- confirm existing: $($summary.scheduleE2E.confirmExistingOk), alreadyExists: $($summary.scheduleE2E.confirmExistingAlreadyExists), schedules: $($summary.scheduleE2E.confirmExistingScheduleCount)")
   $lines.Add("- checklist before: $($summary.scheduleE2E.checklistBeforeOk)")
   $lines.Add("- log taken: $($summary.scheduleE2E.logOk), status: $($summary.scheduleE2E.logStatus)")
   $lines.Add("- checklist after: $($summary.scheduleE2E.checklistAfterOk)")
@@ -486,7 +551,16 @@ if ($summary.scheduleE2E) {
 }
 
 $lines.Add("")
-$lines.Add("## 3. Raw JSON")
+$lines.Add("## 3. Gemini selected medication context")
+$lines.Add("")
+$lines.Add("| Request | OK | selected source |")
+$lines.Add("|---|---|---|")
+foreach ($check in $summary.chatContextChecks) {
+  $lines.Add("| $($check.request) | $($check.ok) | $($check.source) |")
+}
+
+$lines.Add("")
+$lines.Add("## 4. Raw JSON")
 $lines.Add("")
 $lines.Add("- Detail JSON: $jsonPath")
 

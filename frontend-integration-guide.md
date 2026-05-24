@@ -717,7 +717,19 @@ type ConfirmMedicationResponse = {
     active: boolean;
     created_at: string;
     updated_at: string;
+    medications?: {
+      id: string;
+      item_name: string;
+      entp_name: string | null;
+      efficacy: string | null;
+      dosage: string | null;
+      precautions: string | null;
+      storage_method: string | null;
+      administration_timing: string | null;
+    } | null;
   };
+  alreadyExists: boolean;
+  schedules: MedicationSchedule[];
 };
 ```
 
@@ -744,7 +756,14 @@ export async function confirmMedication(params: {
       end_date: string | null;
       source: string;
       active: boolean;
+      medications?: {
+        id: string;
+        item_name: string;
+        entp_name: string | null;
+      } | null;
     };
+    alreadyExists: boolean;
+    schedules: MedicationSchedule[];
   };
 }
 ```
@@ -757,6 +776,8 @@ await confirmMedication({
   startDate: new Date().toISOString().slice(0, 10),
 });
 ```
+
+동일 사용자의 동일 약품이 이미 active 상태이면 새로 등록하지 않고 기존 `userMedication`을 반환한다. 이때 기존 active 복약 일정과 알림 설정은 `schedules`에 함께 내려온다. 신규 등록이면 `alreadyExists=false`, `schedules=[]`다.
 
 ## 10. 이미지 삭제
 
@@ -831,6 +852,9 @@ type GeminiChatRequest = {
   question: string;
   scanId?: string;
   chatSessionId?: string;
+  userMedicationId?: string;
+  detectedMedicationId?: string;
+  medicationId?: string;
 };
 ```
 
@@ -846,6 +870,13 @@ type GeminiChatResponse = {
   citedInteractionIds: string[];
   disclaimer: string;
   safetyIntent?: "general" | "interaction" | "dose_change" | "stop_medication" | "alcohol" | "pregnancy" | "emergency" | "prompt_attack";
+  selectedMedicationContext?: {
+    source: "user_medication" | "detected_medication" | "medication_master" | "scan" | "active_medications";
+    userMedicationId: string | null;
+    detectedMedicationId: string | null;
+    medicationId: string | null;
+    name: string | null;
+  };
   interactionEvidence?: {
     mode: "not_interaction_question" | "confirmed_warning" | "no_registered_warning" | "insufficient_context";
     checkedMedicationIds: string[];
@@ -868,6 +899,9 @@ export async function askMedicationChatbot(params: {
   question: string;
   scanId?: string;
   chatSessionId?: string;
+  userMedicationId?: string;
+  detectedMedicationId?: string;
+  medicationId?: string;
 }) {
   const { data, error } = await supabase.functions.invoke("gemini-chat", {
     body: params,
@@ -883,6 +917,13 @@ export async function askMedicationChatbot(params: {
     citedInteractionIds: string[];
     disclaimer: string;
     safetyIntent?: "general" | "interaction" | "dose_change" | "stop_medication" | "alcohol" | "pregnancy" | "emergency" | "prompt_attack";
+    selectedMedicationContext?: {
+      source: "user_medication" | "detected_medication" | "medication_master" | "scan" | "active_medications";
+      userMedicationId: string | null;
+      detectedMedicationId: string | null;
+      medicationId: string | null;
+      name: string | null;
+    };
     interactionEvidence?: {
       mode: "not_interaction_question" | "confirmed_warning" | "no_registered_warning" | "insufficient_context";
       checkedMedicationIds: string[];
@@ -902,6 +943,8 @@ const result = await askMedicationChatbot({
   scanId,
 });
 ```
+
+특정 약 상세 화면에서는 `userMedicationId`, OCR 후보 카드에서는 `detectedMedicationId`, 약품 마스터 상세에서는 `medicationId`를 함께 보낸다. 프론트가 약 이름/복용법 원문을 직접 보내더라도 백엔드는 이를 공식 근거로 쓰지 않는다. 공식 맥락은 ID로 조회한 DB 데이터만 사용한다.
 
 응답 예시:
 
@@ -991,7 +1034,8 @@ Request Body:
 ```ts
 type CreateMedicationScheduleRequest = {
   userMedicationId: string;
-  takeTime: string; // HH:mm:ss
+  takeTime?: string; // HH:mm 또는 HH:mm:ss
+  takeTimes?: string[]; // HH:mm 또는 HH:mm:ss, 하루 여러 번 복용 시 사용
   timingRule?: "before_meal" | "after_meal" | "with_meal" | "bedtime" | "custom";
   doseAmount?: number;
   doseUnit?: string;
@@ -1023,14 +1067,16 @@ type MedicationSchedule = {
 };
 
 type CreateMedicationScheduleResponse = {
-  schedule: MedicationSchedule;
+  schedule: MedicationSchedule | null;
+  schedules: MedicationSchedule[];
 };
 ```
 
 ```ts
 export async function createMedicationSchedule(params: {
   userMedicationId: string;
-  takeTime: string;
+  takeTime?: string;
+  takeTimes?: string[];
   timingRule?: "before_meal" | "after_meal" | "with_meal" | "bedtime" | "custom";
   doseAmount?: number;
   doseUnit?: string;
@@ -1054,7 +1100,7 @@ export async function createMedicationSchedule(params: {
 ```ts
 await createMedicationSchedule({
   userMedicationId,
-  takeTime: "09:00:00",
+  takeTimes: ["09:00:00", "13:00:00", "19:00:00"],
   timingRule: "after_meal",
   doseAmount: 1,
   doseUnit: "정",
@@ -1064,6 +1110,8 @@ await createMedicationSchedule({
   notificationEnabled: true,
 });
 ```
+
+`takeTime`과 `takeTimes`는 동시에 보내지 않는다. `takeTimes`의 중복 시간은 백엔드에서 정규화 후 제거한다. 이미 같은 `userMedicationId + take_time + active=true` 일정이 있으면 새로 만들지 않고 기존 schedule을 반환한다.
 
 ### 12.2 일정 수정
 

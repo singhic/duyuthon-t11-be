@@ -7,13 +7,24 @@ type RequestBody = {
   question: string;
   chatSessionId?: string;
   scanId?: string;
+  userMedicationId?: string;
+  detectedMedicationId?: string;
+  medicationId?: string;
 };
 
 type MedicationContextItem = {
   id: string;
-  source: "active" | "scan";
+  source: "active" | "scan" | "medication_master";
   name: string;
   medicationId: string | null;
+};
+
+type SelectedMedicationContext = {
+  source: "user_medication" | "detected_medication" | "medication_master" | "scan" | "active_medications";
+  userMedicationId: string | null;
+  detectedMedicationId: string | null;
+  medicationId: string | null;
+  name: string | null;
 };
 
 type InteractionEvidence = {
@@ -87,10 +98,11 @@ function classifySafetyIntent(question: string): SafetyIntent {
 }
 
 function medicationName(value: any): string {
-  return value?.medications?.item_name ?? value?.matched_name ?? value?.custom_name ?? value?.detected_name ?? "이 약";
+  const medication = relationOne(value?.medications);
+  return medication?.item_name ?? value?.item_name ?? value?.matched_name ?? value?.custom_name ?? value?.detected_name ?? "이 약";
 }
 
-function uniqueMedicationContext(activeMeds: any[], detected: any[]): MedicationContextItem[] {
+function uniqueMedicationContext(activeMeds: any[], detected: any[], medicationMasters: any[] = []): MedicationContextItem[] {
   const items: MedicationContextItem[] = [
     ...activeMeds.map((row) => ({
       id: row.id,
@@ -104,6 +116,12 @@ function uniqueMedicationContext(activeMeds: any[], detected: any[]): Medication
       name: medicationName(row),
       medicationId: row.medication_id ?? row.medications?.id ?? null,
     })),
+    ...medicationMasters.map((row) => ({
+      id: row.id,
+      source: "medication_master" as const,
+      name: medicationName(row),
+      medicationId: row.id ?? null,
+    })),
   ];
 
   const seen = new Set<string>();
@@ -113,6 +131,10 @@ function uniqueMedicationContext(activeMeds: any[], detected: any[]): Medication
     seen.add(key);
     return true;
   });
+}
+
+function relationOne(value: any): any | null {
+  return Array.isArray(value) ? value[0] ?? null : value ?? null;
 }
 
 async function loadInteractionEvidence(
@@ -361,7 +383,93 @@ Deno.serve(async (req) => {
     if (detectedError) throw new HttpError(500, "Failed to load scan medications", detectedError);
     if (scanError) throw new HttpError(500, "Failed to load scan session", scanError);
 
-    const medicationContext = uniqueMedicationContext(activeMeds ?? [], detected ?? []);
+    let selectedMedicationContext: SelectedMedicationContext = body.scanId
+      ? {
+        source: "scan",
+        userMedicationId: null,
+        detectedMedicationId: null,
+        medicationId: null,
+        name: null,
+      }
+      : {
+        source: "active_medications",
+        userMedicationId: null,
+        detectedMedicationId: null,
+        medicationId: null,
+        name: null,
+      };
+    let selectedActiveMeds: any[] = [];
+    let selectedDetectedMeds: any[] = [];
+    let selectedMedicationMasters: any[] = [];
+
+    if (body.userMedicationId) {
+      const { data: selected, error: selectedError } = await serviceClient
+        .from("user_medications")
+        .select("id, medication_id, custom_name, medications(id,item_name,efficacy,dosage,precautions,side_effects,storage_method,administration_timing,information_completeness,source,source_updated_at)")
+        .eq("id", body.userMedicationId)
+        .eq("user_id", user.id)
+        .eq("active", true)
+        .maybeSingle();
+
+      if (selectedError) throw new HttpError(500, "Failed to load selected user medication", selectedError);
+      if (!selected) throw new HttpError(404, "Selected user medication not found");
+
+      selectedActiveMeds = [selected];
+      selectedMedicationContext = {
+        source: "user_medication",
+        userMedicationId: selected.id,
+        detectedMedicationId: null,
+        medicationId: selected.medication_id ?? relationOne(selected.medications)?.id ?? null,
+        name: medicationName(selected),
+      };
+    } else if (body.detectedMedicationId) {
+      const { data: selected, error: selectedError } = await serviceClient
+        .from("scan_detected_medications")
+        .select("id, medication_id, detected_name, matched_name, confidence, match_quality, needs_confirmation, warning_message, medications(id,item_name,efficacy,dosage,precautions,side_effects,storage_method,administration_timing,information_completeness,source,source_updated_at), scan_sessions(id,user_id)")
+        .eq("id", body.detectedMedicationId)
+        .maybeSingle();
+
+      if (selectedError) throw new HttpError(500, "Failed to load selected detected medication", selectedError);
+      if (!selected) throw new HttpError(404, "Selected detected medication not found");
+
+      const selectedScan = relationOne(selected.scan_sessions);
+      if (!selectedScan || selectedScan.user_id !== user.id) {
+        throw new HttpError(403, "Selected detected medication does not belong to the current user");
+      }
+
+      selectedDetectedMeds = [selected];
+      selectedMedicationContext = {
+        source: "detected_medication",
+        userMedicationId: null,
+        detectedMedicationId: selected.id,
+        medicationId: selected.medication_id ?? relationOne(selected.medications)?.id ?? null,
+        name: medicationName(selected),
+      };
+    } else if (body.medicationId) {
+      const { data: selected, error: selectedError } = await serviceClient
+        .from("medications")
+        .select("id,item_name,efficacy,dosage,precautions,side_effects,storage_method,administration_timing,information_completeness,source,source_updated_at")
+        .eq("id", body.medicationId)
+        .maybeSingle();
+
+      if (selectedError) throw new HttpError(500, "Failed to load selected medication", selectedError);
+      if (!selected) throw new HttpError(404, "Selected medication not found");
+
+      selectedMedicationMasters = [selected];
+      selectedMedicationContext = {
+        source: "medication_master",
+        userMedicationId: null,
+        detectedMedicationId: null,
+        medicationId: selected.id,
+        name: medicationName(selected),
+      };
+    }
+
+    const medicationContext = uniqueMedicationContext(
+      [...(activeMeds ?? []), ...selectedActiveMeds],
+      [...(detected ?? []), ...selectedDetectedMeds],
+      selectedMedicationMasters,
+    );
     const safetyIntent = classifySafetyIntent(body.question.trim());
     const interactionEvidence = await loadInteractionEvidence(
       serviceClient,
@@ -390,6 +498,7 @@ Deno.serve(async (req) => {
         ...deterministicAnswer,
         safetyIntent,
         interactionEvidence,
+        selectedMedicationContext,
       });
     }
 
@@ -421,6 +530,7 @@ Deno.serve(async (req) => {
         ...fallbackAnswer,
         safetyIntent,
         interactionEvidence,
+        selectedMedicationContext,
       });
     }
 
@@ -447,6 +557,12 @@ Deno.serve(async (req) => {
         : null,
       activeMedications: activeMeds ?? [],
       scanMedications: detected ?? [],
+      selectedMedicationContext,
+      selectedMedications: {
+        userMedications: selectedActiveMeds,
+        detectedMedications: selectedDetectedMeds,
+        medicationMasters: selectedMedicationMasters,
+      },
       safetyIntent,
       interactionEvidence,
       safetyPolicy: {
@@ -499,6 +615,7 @@ Deno.serve(async (req) => {
         interactionIds: gemini.answer.citedInteractionIds,
         safetyIntent,
         interactionEvidence,
+        selectedMedicationContext,
         rawSafetyBlocked: gemini.safetyBlocked,
       },
       safety_level: gemini.answer.safetyLevel,
@@ -517,6 +634,7 @@ Deno.serve(async (req) => {
       ...gemini.answer,
       safetyIntent,
       interactionEvidence,
+      selectedMedicationContext,
     });
   } catch (error) {
     return errorResponse(error);

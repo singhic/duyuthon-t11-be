@@ -9,6 +9,32 @@ type RequestBody = {
   customName?: string;
 };
 
+const USER_MEDICATION_SELECT = `
+  *,
+  medications(
+    id,
+    item_name,
+    entp_name,
+    efficacy,
+    dosage,
+    precautions,
+    storage_method,
+    administration_timing
+  )
+`;
+
+async function loadActiveSchedules(serviceClient: any, userMedicationId: string): Promise<any[]> {
+  const { data: schedules, error } = await serviceClient
+    .from("medication_schedules")
+    .select("*")
+    .eq("user_medication_id", userMedicationId)
+    .eq("active", true)
+    .order("take_time", { ascending: true });
+
+  if (error) throw new HttpError(500, "Failed to load medication schedules", error);
+  return schedules ?? [];
+}
+
 Deno.serve(async (req) => {
   const cors = handleCors(req);
   if (cors) return cors;
@@ -43,7 +69,7 @@ Deno.serve(async (req) => {
 
     const { data: existingMedication, error: existingError } = await serviceClient
       .from("user_medications")
-      .select("*")
+      .select(USER_MEDICATION_SELECT)
       .eq("user_id", user.id)
       .eq("medication_id", detected.medication_id)
       .eq("active", true)
@@ -59,9 +85,11 @@ Deno.serve(async (req) => {
         })
         .eq("id", body.detectedMedicationId);
 
+      const schedules = await loadActiveSchedules(serviceClient, existingMedication.id);
       return json({
         userMedication: existingMedication,
         alreadyExists: true,
+        schedules,
       });
     }
 
@@ -77,14 +105,14 @@ Deno.serve(async (req) => {
         source: "manual_confirmed",
         active: true,
       })
-      .select("*")
+      .select(USER_MEDICATION_SELECT)
       .single();
 
     if (insertError) {
       if (insertError.code === "23505") {
         const { data: medicationAfterConflict, error: conflictLoadError } = await serviceClient
           .from("user_medications")
-          .select("*")
+          .select(USER_MEDICATION_SELECT)
           .eq("user_id", user.id)
           .eq("medication_id", detected.medication_id)
           .eq("active", true)
@@ -94,9 +122,11 @@ Deno.serve(async (req) => {
           throw new HttpError(500, "Failed to load existing user medication after conflict", conflictLoadError);
         }
         if (medicationAfterConflict) {
+          const schedules = await loadActiveSchedules(serviceClient, medicationAfterConflict.id);
           return json({
             userMedication: medicationAfterConflict,
             alreadyExists: true,
+            schedules,
           });
         }
       }
@@ -110,9 +140,9 @@ Deno.serve(async (req) => {
         needs_confirmation: false,
         match_method: "manual_review",
       })
-      .eq("id", body.detectedMedicationId);
+        .eq("id", body.detectedMedicationId);
 
-    return json({ userMedication, alreadyExists: false }, 201);
+    return json({ userMedication, alreadyExists: false, schedules: [] }, 201);
   } catch (error) {
     return errorResponse(error);
   }

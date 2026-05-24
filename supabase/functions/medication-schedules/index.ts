@@ -5,7 +5,8 @@ import { requireUser } from "../_shared/supabase.ts";
 type RequestBody = {
   scheduleId?: string;
   userMedicationId: string;
-  takeTime: string;
+  takeTime?: string;
+  takeTimes?: string[];
   timingRule?: "before_meal" | "after_meal" | "with_meal" | "bedtime" | "custom";
   doseAmount?: number;
   doseUnit?: string;
@@ -32,6 +33,31 @@ function normalizeTime(value: string): string {
     throw new HttpError(400, "takeTime must be HH:mm or HH:mm:ss");
   }
   return `${match[1]}:${match[2]}:${match[3] ?? "00"}`;
+}
+
+function normalizeTakeTimes(body: RequestBody): string[] {
+  const hasTakeTime = body.takeTime !== undefined && body.takeTime !== null && body.takeTime !== "";
+  const hasTakeTimes = body.takeTimes !== undefined;
+
+  if (hasTakeTime && hasTakeTimes) {
+    throw new HttpError(400, "Use either takeTime or takeTimes, not both");
+  }
+  if (!hasTakeTime && !hasTakeTimes) {
+    throw new HttpError(400, "takeTime or takeTimes is required");
+  }
+  if (hasTakeTimes && (!Array.isArray(body.takeTimes) || body.takeTimes.length === 0)) {
+    throw new HttpError(400, "takeTimes must contain at least one time");
+  }
+
+  const rawTimes = hasTakeTimes ? body.takeTimes ?? [] : [body.takeTime as string];
+  const normalized = rawTimes.map((time) => {
+    if (typeof time !== "string") {
+      throw new HttpError(400, "takeTimes must contain HH:mm or HH:mm:ss strings");
+    }
+    return normalizeTime(time);
+  });
+
+  return [...new Set(normalized)];
 }
 
 function normalizeDaysOfWeek(daysOfWeek?: number[]): number[] {
@@ -176,10 +202,11 @@ Deno.serve(async (req) => {
 
     const body = await readJson<RequestBody>(req);
 
-    if (!body.userMedicationId || !body.takeTime) {
-      throw new HttpError(400, "userMedicationId and takeTime are required");
+    if (!body.userMedicationId) {
+      throw new HttpError(400, "userMedicationId is required");
     }
     validateCommonFields(body);
+    const takeTimes = normalizeTakeTimes(body);
 
     const { data: medication, error: medicationError } = await serviceClient
       .from("user_medications")
@@ -191,11 +218,23 @@ Deno.serve(async (req) => {
     if (medicationError) throw new HttpError(500, "Failed to verify user medication", medicationError);
     if (!medication) throw new HttpError(404, "User medication not found");
 
-    const { data: schedule, error: scheduleError } = await serviceClient
+    const { data: existingSchedules, error: existingScheduleError } = await serviceClient
       .from("medication_schedules")
-      .insert({
+      .select("*")
+      .eq("user_medication_id", body.userMedicationId)
+      .eq("active", true)
+      .in("take_time", takeTimes);
+
+    if (existingScheduleError) throw new HttpError(500, "Failed to load existing medication schedules", existingScheduleError);
+
+    const existingByTime = new Map((existingSchedules ?? []).map((schedule) => [schedule.take_time, schedule]));
+    const missingTimes = takeTimes.filter((takeTime) => !existingByTime.has(takeTime));
+
+    let insertedSchedules: any[] = [];
+    if (missingTimes.length > 0) {
+      const payloads = missingTimes.map((takeTime) => ({
         user_medication_id: body.userMedicationId,
-        take_time: normalizeTime(body.takeTime),
+        take_time: takeTime,
         timing_rule: body.timingRule ?? "custom",
         dose_amount: body.doseAmount ?? null,
         dose_unit: body.doseUnit ?? null,
@@ -204,13 +243,22 @@ Deno.serve(async (req) => {
         start_date: body.startDate ?? new Date().toISOString().slice(0, 10),
         end_date: body.endDate ?? null,
         active: body.active ?? true,
-      })
-      .select("*")
-      .single();
+      }));
 
-    if (scheduleError) throw new HttpError(500, "Failed to create medication schedule", scheduleError);
+      const { data, error: scheduleError } = await serviceClient
+        .from("medication_schedules")
+        .insert(payloads)
+        .select("*");
 
-    return json({ schedule }, 201);
+      if (scheduleError) throw new HttpError(500, "Failed to create medication schedules", scheduleError);
+      insertedSchedules = data ?? [];
+    }
+
+    const allSchedules = [...(existingSchedules ?? []), ...insertedSchedules]
+      .filter((schedule) => takeTimes.includes(schedule.take_time))
+      .sort((a, b) => `${a.take_time}`.localeCompare(`${b.take_time}`));
+
+    return json({ schedule: allSchedules[0] ?? null, schedules: allSchedules }, 201);
   } catch (error) {
     return errorResponse(error);
   }

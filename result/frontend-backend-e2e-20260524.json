@@ -1,10 +1,10 @@
 ﻿{
     "projectRef":  "hygsrrmoawezonahnljn",
-    "generatedAt":  "2026-05-24T06:29:28.9917637Z",
+    "generatedAt":  "2026-05-24T12:03:19.3276639Z",
     "imageResults":  [
                          {
                              "image":  "prescription_1.jpeg",
-                             "scanId":  "1fa67396-a5d5-4baf-9429-420d68e78a8c",
+                             "scanId":  "fda9e490-3301-4307-bace-e2b33fb058da",
                              "uploadOk":  true,
                              "scanInsertOk":  true,
                              "googleOcr":  {
@@ -32,7 +32,7 @@
                                                                      ],
                                              "detected":  [
                                                               {
-                                                                  "id":  "c129dbf5-11e3-42ea-be75-935468b63f98",
+                                                                  "id":  "870b0149-fcc4-44c2-9732-817d14bf170e",
                                                                   "detectedName":  "DRIVE",
                                                                   "matchedName":  null,
                                                                   "medicationId":  null,
@@ -46,12 +46,12 @@
                          },
                          {
                              "image":  "prescription_2.png",
-                             "scanId":  "7871d569-f74b-4241-9679-812b08b37c4f",
+                             "scanId":  "585fe91f-7d9e-489a-9b9b-d2457e62b627",
                              "uploadOk":  true,
                              "scanInsertOk":  true,
                              "googleOcr":  {
                                                "ok":  true,
-                                               "confidence":  0.8195502728301883,
+                                               "confidence":  0.8198266369811317,
                                                "ocrTextLength":  865,
                                                "needsManualReview":  false,
                                                "failureReason":  null,
@@ -94,16 +94,16 @@
                                                                          "ì¸íë²í¸",
                                                                          "íìì ìêµ¬ê° ìì ëìë ì§ë³ ë¶ë¥ê¸°í¸ë¥¼ ê¸°ì¬íì§ ìë í©ëë¤",
                                                                          "1í",
-                                                                         "ì²ë°© ìì½íì ëª\u0085ì¹­",
                                                                          "ì¼í¬ì´",
                                                                          "ì¢\u0085ë¶ì ë³¸ì¸",
+                                                                         "ì²ë°© ìì½íì ëª\u0085ì¹­",
                                                                          "íì",
                                                                          "ì\u0085ì",
                                                                          "SUNT"
                                                                      ],
                                              "detected":  [
                                                               {
-                                                                  "id":  "8de122be-5bfe-4679-8b87-e6a204b5798a",
+                                                                  "id":  "dae46858-376c-4d11-8f79-24ec2821d82d",
                                                                   "detectedName":  "ì¡°í©ê¸°í¸ 00000000000",
                                                                   "matchedName":  null,
                                                                   "medicationId":  null,
@@ -112,7 +112,7 @@
                                                                   "needsConfirmation":  true
                                                               },
                                                               {
-                                                                  "id":  "726996f6-ca5a-420d-9fc8-6dc58559b5fa",
+                                                                  "id":  "cef30bb9-4475-4aee-8632-2b7d51b7b3d2",
                                                                   "detectedName":  "ì¦ë²í¸",
                                                                   "matchedName":  null,
                                                                   "medicationId":  null,
@@ -121,7 +121,7 @@
                                                                   "needsConfirmation":  true
                                                               },
                                                               {
-                                                                  "id":  "b67507ed-52d5-473e-a0c9-a05de8a1512a",
+                                                                  "id":  "73d0c134-e791-4046-b8f4-79e83c05f407",
                                                                   "detectedName":  "1(ìë£ë³´í 2(ìë£ê¸ì¬ 3()ì°ì¬ë³´í 4()ìëì°¨ë³´í 5() ê¸°í (",
                                                                   "matchedName":  null,
                                                                   "medicationId":  null,
@@ -130,7 +130,7 @@
                                                                   "needsConfirmation":  true
                                                               },
                                                               {
-                                                                  "id":  "aa219b31-c255-4bbf-8a79-9f07ae387d12",
+                                                                  "id":  "e25811f1-d61d-4362-bfe1-d246c4a9ad28",
                                                                   "detectedName":  "3()ì°",
                                                                   "matchedName":  null,
                                                                   "medicationId":  null,
@@ -139,7 +139,7 @@
                                                                   "needsConfirmation":  true
                                                               },
                                                               {
-                                                                  "id":  "5fb2651f-2807-46d3-bf7d-f16f73caa3b2",
+                                                                  "id":  "c06d7eb2-7d9b-463d-b9a3-613332d3dbbe",
                                                                   "detectedName":  "ì¡°íì ",
                                                                   "matchedName":  null,
                                                                   "medicationId":  null,
@@ -148,7 +148,7 @@
                                                                   "needsConfirmation":  true
                                                               },
                                                               {
-                                                                  "id":  "2e9da150-7820-4ac6-8f59-df50f2014e9e",
+                                                                  "id":  "a29ce75f-a2be-4fc4-b5d8-1382f8696fec",
                                                                   "detectedName":  "(íì ë³´ê´ì©)",
                                                                   "matchedName":  null,
                                                                   "medicationId":  null,
@@ -157,7 +157,7 @@
                                                                   "needsConfirmation":  true
                                                               },
                                                               {
-                                                                  "id":  "c644fc2f-4455-4a17-8658-01065d5cec4a",
+                                                                  "id":  "61edd808-fae6-4bc1-ba59-a9111efb4922",
                                                                   "detectedName":  "ììê¸°ê´ê¸°í¸",
                                                                   "matchedName":  null,
                                                                   "medicationId":  null,
@@ -166,7 +166,7 @@
                                                                   "needsConfirmation":  true
                                                               },
                                                               {
-                                                                  "id":  "9d7563c9-4bee-4184-8901-02b972df85f6",
+                                                                  "id":  "fbd007fd-747b-4277-9440-f43b0af910b4",
                                                                   "detectedName":  "êµë¶ë²í¸ 2019 ë\u0085 02 ì 15 ì¼ -",
                                                                   "matchedName":  null,
                                                                   "medicationId":  null,
@@ -175,7 +175,7 @@
                                                                   "needsConfirmation":  true
                                                               },
                                                               {
-                                                                  "id":  "9ea4d882-928c-451c-9409-8ebd4d474980",
+                                                                  "id":  "4eca4ba9-8a46-444b-99bf-d4ab03fb4835",
                                                                   "detectedName":  "ìì§ì",
                                                                   "matchedName":  null,
                                                                   "medicationId":  null,
@@ -184,7 +184,7 @@
                                                                   "needsConfirmation":  true
                                                               },
                                                               {
-                                                                  "id":  "8b3486e3-619c-481c-a79a-63506094d07f",
+                                                                  "id":  "3292998f-1db3-4960-9d38-1a003fa21aad",
                                                                   "detectedName":  "í ì± ëª\u0085",
                                                                   "matchedName":  null,
                                                                   "medicationId":  null,
@@ -193,7 +193,7 @@
                                                                   "needsConfirmation":  true
                                                               },
                                                               {
-                                                                  "id":  "16173261-4ffd-420f-a808-fb6edc666363",
+                                                                  "id":  "ee3383fc-ef44-4d72-b5a2-7682db91654a",
                                                                   "detectedName":  "ì£¼ë¯¼ë±ë¡",
                                                                   "matchedName":  null,
                                                                   "medicationId":  null,
@@ -202,7 +202,7 @@
                                                                   "needsConfirmation":  true
                                                               },
                                                               {
-                                                                  "id":  "2f7a2234-6b8f-46b5-b81c-ada2dd1619bd",
+                                                                  "id":  "b835def0-df79-4f91-936c-6eb8dc1c5327",
                                                                   "detectedName":  "ë² í¸",
                                                                   "matchedName":  null,
                                                                   "medicationId":  null,
@@ -211,7 +211,7 @@
                                                                   "needsConfirmation":  true
                                                               },
                                                               {
-                                                                  "id":  "a6209c1e-c981-44e5-af4b-fb19ef189450",
+                                                                  "id":  "fde5aff0-044a-4ff1-b243-d3af7035fa61",
                                                                   "detectedName":  "ì í ë²í¸",
                                                                   "matchedName":  null,
                                                                   "medicationId":  null,
@@ -220,7 +220,7 @@
                                                                   "needsConfirmation":  true
                                                               },
                                                               {
-                                                                  "id":  "723c5419-21ed-4dd2-9508-f14ffe26d4d7",
+                                                                  "id":  "636f9979-8851-4ed0-bbe6-8d376390ac13",
                                                                   "detectedName":  "í©ì¤ ë²í¸",
                                                                   "matchedName":  null,
                                                                   "medicationId":  null,
@@ -229,7 +229,7 @@
                                                                   "needsConfirmation":  true
                                                               },
                                                               {
-                                                                  "id":  "052b3f23-887a-4596-94dd-fe5fec1dbee3",
+                                                                  "id":  "fd3d8f3d-5386-4b0e-b292-68a635ecdf7a",
                                                                   "detectedName":  "e-hilì£¼ì",
                                                                   "matchedName":  null,
                                                                   "medicationId":  null,
@@ -238,7 +238,7 @@
                                                                   "needsConfirmation":  true
                                                               },
                                                               {
-                                                                  "id":  "65c5c31e-94c2-4de2-8e07-0e1ea19e8aa2",
+                                                                  "id":  "62ec32b3-4762-4232-b436-86b430f6d0ca",
                                                                   "detectedName":  "e-hilì£¼",
                                                                   "matchedName":  null,
                                                                   "medicationId":  null,
@@ -247,7 +247,7 @@
                                                                   "needsConfirmation":  true
                                                               },
                                                               {
-                                                                  "id":  "6d5d0e37-5238-4f87-a523-ffe51b6b55af",
+                                                                  "id":  "9dfd4ae5-22cd-43ab-8478-5d4caa347eb3",
                                                                   "detectedName":  "ì²ë°©ì",
                                                                   "matchedName":  null,
                                                                   "medicationId":  null,
@@ -256,7 +256,7 @@
                                                                   "needsConfirmation":  true
                                                               },
                                                               {
-                                                                  "id":  "8d3de09c-a563-42a1-81d6-246ab621f476",
+                                                                  "id":  "cc6fb8da-bd3c-4e79-9e90-b1128f20d6d8",
                                                                   "detectedName":  "ê²¬íì¢\u0085ë³",
                                                                   "matchedName":  null,
                                                                   "medicationId":  null,
@@ -265,7 +265,7 @@
                                                                   "needsConfirmation":  true
                                                               },
                                                               {
-                                                                  "id":  "7ddf737d-f16d-4d7f-ad30-04d7b0136bd9",
+                                                                  "id":  "6ede2d06-cff3-4d40-9992-31e7d397d26e",
                                                                   "detectedName":  "ì¸íë²í¸",
                                                                   "matchedName":  null,
                                                                   "medicationId":  null,
@@ -274,7 +274,7 @@
                                                                   "needsConfirmation":  true
                                                               },
                                                               {
-                                                                  "id":  "c9dae782-ab9f-4406-ae52-0cc1f45bc1f5",
+                                                                  "id":  "d8848b8b-fb20-4fb5-88dc-8d12caf5c497",
                                                                   "detectedName":  "íìì ìêµ¬ê° ìì ëìë ì§ë³ ë¶ë¥ê¸°í¸ë¥¼ ê¸°ì¬íì§ ìë í©ëë¤",
                                                                   "matchedName":  null,
                                                                   "medicationId":  null,
@@ -283,16 +283,7 @@
                                                                   "needsConfirmation":  true
                                                               },
                                                               {
-                                                                  "id":  "456521ff-b89f-4633-8016-13bef9c47285",
-                                                                  "detectedName":  "ì²ë°© ìì½íì ëª\u0085ì¹­",
-                                                                  "matchedName":  null,
-                                                                  "medicationId":  null,
-                                                                  "confidence":  0,
-                                                                  "matchQuality":  "none",
-                                                                  "needsConfirmation":  true
-                                                              },
-                                                              {
-                                                                  "id":  "3f455b3e-b908-489b-ad8e-7f4c192102a2",
+                                                                  "id":  "361f3f7e-feb6-4832-a9fe-afc5cc2e8b85",
                                                                   "detectedName":  "ì¼í¬ì´",
                                                                   "matchedName":  null,
                                                                   "medicationId":  null,
@@ -301,7 +292,7 @@
                                                                   "needsConfirmation":  true
                                                               },
                                                               {
-                                                                  "id":  "24cb67a4-f41a-4b04-8706-ee63ba6fd0a3",
+                                                                  "id":  "5e15e6d3-fa73-4112-9f69-e5eaf2ffe805",
                                                                   "detectedName":  "ì¢\u0085ë¶ì ë³¸ì¸",
                                                                   "matchedName":  null,
                                                                   "medicationId":  null,
@@ -310,7 +301,16 @@
                                                                   "needsConfirmation":  true
                                                               },
                                                               {
-                                                                  "id":  "b36a4239-e1f0-4692-b5a2-116e09dfe382",
+                                                                  "id":  "2996c149-0ec8-4158-a59a-c07fcf30ae86",
+                                                                  "detectedName":  "ì²ë°© ìì½íì ëª\u0085ì¹­",
+                                                                  "matchedName":  null,
+                                                                  "medicationId":  null,
+                                                                  "confidence":  0,
+                                                                  "matchQuality":  "none",
+                                                                  "needsConfirmation":  true
+                                                              },
+                                                              {
+                                                                  "id":  "91eb19eb-8392-4814-baa6-b5726b916651",
                                                                   "detectedName":  "SUNT",
                                                                   "matchedName":  null,
                                                                   "medicationId":  null,
@@ -324,7 +324,7 @@
                          },
                          {
                              "image":  "prescription_3.png",
-                             "scanId":  "e2df62e9-3576-4216-a434-7d3fd9b1ca8a",
+                             "scanId":  "46517a27-4c68-4c2a-9849-f6ecd457e0ba",
                              "uploadOk":  true,
                              "scanInsertOk":  true,
                              "googleOcr":  {
@@ -347,13 +347,13 @@
                          },
                          {
                              "image":  "prescription_4.jpg",
-                             "scanId":  "704c18ae-b883-42a7-bacc-ae7ac1fc96ec",
+                             "scanId":  "2376690b-e4af-4193-9424-d86fed51645a",
                              "uploadOk":  true,
                              "scanInsertOk":  true,
                              "googleOcr":  {
                                                "ok":  true,
-                                               "confidence":  0.7657503210204084,
-                                               "ocrTextLength":  919,
+                                               "confidence":  0.7653033679591835,
+                                               "ocrTextLength":  922,
                                                "needsManualReview":  false,
                                                "failureReason":  null,
                                                "imageDeleted":  true,
@@ -380,7 +380,7 @@
                                                                          "ìë¥ë°±ë²í¸",
                                                                          "ì²ë°©ìë£ì¸ì",
                                                                          "ìë£ê¸°ê´",
-                                                                         "ìì ìêµ¬ê° ìë ëìë ëª\u0085ë¶ë¥ê¸°í¸ë¥¼ ê¸°ì¬íì§ ìëí©ëë¤.",
+                                                                         "ë¨ì§ì ìêµ¬ê° ìë ëìë ëª\u0085ë¶ë¥ê¸°í¸ë¥¼ ê¸°ì¬íì§ ìëí©ëë¤.",
                                                                          "ììê¸°ê´ë²í¸",
                                                                          "(ì½êµ­ì ì¶ì©)",
                                                                          "í©ì¤ë²í¸",
@@ -404,7 +404,7 @@
                                                                      ],
                                              "detected":  [
                                                               {
-                                                                  "id":  "fdbec7bc-1904-414e-b4d8-e77172e9ad51",
+                                                                  "id":  "8bd3688c-ef85-4ee7-9f84-1c62df8d13fe",
                                                                   "detectedName":  "[ë³ì§ ì 10í¸ ìì",
                                                                   "matchedName":  null,
                                                                   "medicationId":  null,
@@ -413,7 +413,7 @@
                                                                   "needsConfirmation":  true
                                                               },
                                                               {
-                                                                  "id":  "69ee7955-ad64-48dc-90d8-22f43758f6fb",
+                                                                  "id":  "81b17019-c4a4-4529-8557-5c3a553b5d7f",
                                                                   "detectedName":  "[ê±´ê°ë³´í]",
                                                                   "matchedName":  null,
                                                                   "medicationId":  null,
@@ -422,7 +422,7 @@
                                                                   "needsConfirmation":  true
                                                               },
                                                               {
-                                                                  "id":  "b15f84e0-ee8a-4b68-a9b7-08c9eaf72215",
+                                                                  "id":  "73f96444-ea01-4af0-af82-78fda8d32a60",
                                                                   "detectedName":  "êµë¶ì¼ì§",
                                                                   "matchedName":  null,
                                                                   "medicationId":  null,
@@ -431,7 +431,7 @@
                                                                   "needsConfirmation":  true
                                                               },
                                                               {
-                                                                  "id":  "392c746b-f42b-463f-9c34-ef30e4e13240",
+                                                                  "id":  "9e55c774-7abb-4b77-9caa-03ba068d3ebd",
                                                                   "detectedName":  "ì²ë°©ì ",
                                                                   "matchedName":  null,
                                                                   "medicationId":  null,
@@ -440,25 +440,25 @@
                                                                   "needsConfirmation":  true
                                                               },
                                                               {
-                                                                  "id":  "592f9c2d-474b-436e-a3c5-ed0489e41b1d",
+                                                                  "id":  "c40def40-0cee-4c12-84ef-1b88c8739020",
                                                                   "detectedName":  "BURZ",
                                                                   "matchedName":  null,
                                                                   "medicationId":  null,
                                                                   "confidence":  0,
-                                                                  "matchQuality":  "none",
+                                                                  "matchQuality":  "medium",
                                                                   "needsConfirmation":  true
                                                               },
                                                               {
-                                                                  "id":  "62684541-bcae-4c38-b2c9-1ec22675ff95",
+                                                                  "id":  "e9ca8812-50a9-49f4-9f74-1132b17e77f5",
                                                                   "detectedName":  "ìë¥ë°±ë²í¸",
                                                                   "matchedName":  null,
                                                                   "medicationId":  null,
                                                                   "confidence":  0,
-                                                                  "matchQuality":  "none",
+                                                                  "matchQuality":  "medium",
                                                                   "needsConfirmation":  true
                                                               },
                                                               {
-                                                                  "id":  "b3e60834-9259-4c4e-aa48-bab8cc5742e2",
+                                                                  "id":  "c680df87-e4ea-4cf9-86f6-8edd8ca8db01",
                                                                   "detectedName":  "ì²ë°©ìë£ì¸ì",
                                                                   "matchedName":  null,
                                                                   "medicationId":  null,
@@ -467,7 +467,7 @@
                                                                   "needsConfirmation":  true
                                                               },
                                                               {
-                                                                  "id":  "70d3b142-5a08-4417-9c01-a1c139b7a74f",
+                                                                  "id":  "3eb24fdc-adf3-42d7-8e9b-fa83acfa2d07",
                                                                   "detectedName":  "ìë£ê¸°ê´",
                                                                   "matchedName":  null,
                                                                   "medicationId":  null,
@@ -476,8 +476,8 @@
                                                                   "needsConfirmation":  true
                                                               },
                                                               {
-                                                                  "id":  "20a8ef16-8e9d-4bcc-9ccf-66ffcc95ac71",
-                                                                  "detectedName":  "ìì ìêµ¬ê° ìë ëìë ëª\u0085ë¶ë¥ê¸°í¸ë¥¼ ê¸°ì¬íì§ ìëí©ëë¤.",
+                                                                  "id":  "aa7d93c1-68d2-4d9a-8f64-ca9af4e70603",
+                                                                  "detectedName":  "ë¨ì§ì ìêµ¬ê° ìë ëìë ëª\u0085ë¶ë¥ê¸°í¸ë¥¼ ê¸°ì¬íì§ ìëí©ëë¤.",
                                                                   "matchedName":  null,
                                                                   "medicationId":  null,
                                                                   "confidence":  0,
@@ -485,7 +485,7 @@
                                                                   "needsConfirmation":  true
                                                               },
                                                               {
-                                                                  "id":  "2d8eb026-42fc-425f-b295-cb8a3497c8d2",
+                                                                  "id":  "b3cf21de-366a-4a25-ba50-da6dbe79522a",
                                                                   "detectedName":  "ììê¸°ê´ë²í¸",
                                                                   "matchedName":  null,
                                                                   "medicationId":  null,
@@ -494,7 +494,7 @@
                                                                   "needsConfirmation":  true
                                                               },
                                                               {
-                                                                  "id":  "d5779687-0ba0-4170-b080-e0426c05fb9e",
+                                                                  "id":  "c28821c7-3eb7-42ae-86c9-d83865076efa",
                                                                   "detectedName":  "(ì½êµ­ì ì¶ì©)",
                                                                   "matchedName":  null,
                                                                   "medicationId":  null,
@@ -503,7 +503,7 @@
                                                                   "needsConfirmation":  true
                                                               },
                                                               {
-                                                                  "id":  "297ab6cf-a5b3-4f8a-b279-48778b315cf4",
+                                                                  "id":  "012ea22c-1e1e-43d5-8324-76c0bce4b16c",
                                                                   "detectedName":  "í©ì¤ë²í¸",
                                                                   "matchedName":  null,
                                                                   "medicationId":  null,
@@ -512,7 +512,7 @@
                                                                   "needsConfirmation":  true
                                                               },
                                                               {
-                                                                  "id":  "8f0134a6-12e4-41de-afd9-1fb1dcf202cf",
+                                                                  "id":  "7ce2b91d-7189-45aa-8acb-48eb453dff60",
                                                                   "detectedName":  "ë©´íë²í¸",
                                                                   "matchedName":  null,
                                                                   "medicationId":  null,
@@ -521,7 +521,7 @@
                                                                   "needsConfirmation":  true
                                                               },
                                                               {
-                                                                  "id":  "1fefb0cc-4460-4b59-9903-29464f1a642d",
+                                                                  "id":  "8e094114-5ff6-469a-b5e7-8801d619575b",
                                                                   "detectedName":  "ì²ë°©ìì½íì ì",
                                                                   "matchedName":  null,
                                                                   "medicationId":  null,
@@ -530,7 +530,7 @@
                                                                   "needsConfirmation":  true
                                                               },
                                                               {
-                                                                  "id":  "73f1d1bb-fdcc-454e-8e85-4e968a35af21",
+                                                                  "id":  "8d4317b9-d5eb-46d3-8f81-7ec1d6e62eab",
                                                                   "detectedName":  "ëì´íì í¬ì½ì¼ì",
                                                                   "matchedName":  null,
                                                                   "medicationId":  null,
@@ -539,7 +539,7 @@
                                                                   "needsConfirmation":  true
                                                               },
                                                               {
-                                                                  "id":  "aa4a685a-e65a-437f-ab73-826f9727bca5",
+                                                                  "id":  "76d5f4b2-6817-4372-8d14-a4cdd88ab77f",
                                                                   "detectedName":  "ëì ìì¸",
                                                                   "matchedName":  null,
                                                                   "medicationId":  null,
@@ -548,7 +548,7 @@
                                                                   "needsConfirmation":  true
                                                               },
                                                               {
-                                                                  "id":  "420e9bcd-7e35-4ef0-8894-432b5a430d90",
+                                                                  "id":  "442fc663-08cc-4052-97a4-5542d950a24f",
                                                                   "detectedName":  "(6401971)ì¼ë³¸ì¸) 19%(íìë£¨ë¡ ì°ëí¸í¼)(",
                                                                   "matchedName":  null,
                                                                   "medicationId":  null,
@@ -557,7 +557,7 @@
                                                                   "needsConfirmation":  true
                                                               },
                                                               {
-                                                                  "id":  "3d1a8cfb-44b3-49be-bab7-b7ebf6aed86a",
+                                                                  "id":  "8143f81f-2c22-49eb-82e8-c93e7c89bc2c",
                                                                   "detectedName":  "(íìë£¨ë¡ ì°",
                                                                   "matchedName":  null,
                                                                   "medicationId":  null,
@@ -566,7 +566,7 @@
                                                                   "needsConfirmation":  true
                                                               },
                                                               {
-                                                                  "id":  "c9d3567e-0be2-486e-ae8b-5133a5241106",
+                                                                  "id":  "5df6e9df-3d67-43ff-a7c9-fabcf6b37d48",
                                                                   "detectedName":  "ë§¤ì(ì²",
                                                                   "matchedName":  null,
                                                                   "medicationId":  null,
@@ -575,7 +575,7 @@
                                                                   "needsConfirmation":  true
                                                               },
                                                               {
-                                                                  "id":  "de6a2371-811e-400f-947a-35dfb3362ffb",
+                                                                  "id":  "761b5b92-981e-4ac8-aa16-4f7e32844474",
                                                                   "detectedName":  "í) ìë³´",
                                                                   "matchedName":  null,
                                                                   "medicationId":  null,
@@ -584,7 +584,7 @@
                                                                   "needsConfirmation":  true
                                                               },
                                                               {
-                                                                  "id":  "63162963-1459-4e3c-9942-7bb461acf324",
+                                                                  "id":  "09ef5509-75fb-4551-be3d-799ad915efc2",
                                                                   "detectedName":  "1ìê°ë§ë¤ ì¬ì©íì¸ì",
                                                                   "matchedName":  null,
                                                                   "medicationId":  null,
@@ -593,7 +593,7 @@
                                                                   "needsConfirmation":  true
                                                               },
                                                               {
-                                                                  "id":  "1c6cd3b0-c83a-49a6-9b63-b96e2278d093",
+                                                                  "id":  "d08488e4-291f-4607-a28a-780a7519901c",
                                                                   "detectedName":  "ì£¼ì¬ì  ì²ë°© ë´ì­ (ìì¡°ì¬ (1. ì¸ì¹",
                                                                   "matchedName":  null,
                                                                   "medicationId":  null,
@@ -602,7 +602,7 @@
                                                                   "needsConfirmation":  true
                                                               },
                                                               {
-                                                                  "id":  "57393b3c-3835-41ed-a4b9-4e7324b2d053",
+                                                                  "id":  "c32ee9c2-1a6f-4b05-9b97-a4bc0b6f8d30",
                                                                   "detectedName":  "ì¡°ì ì ê³ ì¬í",
                                                                   "matchedName":  null,
                                                                   "medicationId":  null,
@@ -611,7 +611,7 @@
                                                                   "needsConfirmation":  true
                                                               },
                                                               {
-                                                                  "id":  "bf8c726c-014a-4ec8-8d08-3ba8ed5c32ac",
+                                                                  "id":  "18f4fd3f-ca1f-4344-8e55-9ea37905c5c7",
                                                                   "detectedName":  "ëì²´ì¡°ì  ê°ë¥í©ëë¤.",
                                                                   "matchedName":  null,
                                                                   "medicationId":  null,
@@ -620,7 +620,7 @@
                                                                   "needsConfirmation":  true
                                                               },
                                                               {
-                                                                  "id":  "2b9b2599-939b-481c-aa03-4a14dc938ba5",
+                                                                  "id":  "e4c56c13-6ba6-4c7a-bc7b-6ea9e75145a7",
                                                                   "detectedName":  "ë³ìì íµíë ê²°ê³¼",
                                                                   "matchedName":  null,
                                                                   "medicationId":  null,
@@ -634,13 +634,13 @@
                          },
                          {
                              "image":  "prescription_5.jpg",
-                             "scanId":  "b2601733-377c-4e77-aa30-698b0ddb67f6",
+                             "scanId":  "3d0f9e17-3843-4f90-a698-70bfca65fe34",
                              "uploadOk":  true,
                              "scanInsertOk":  true,
                              "googleOcr":  {
                                                "ok":  true,
-                                               "confidence":  0.734832315897436,
-                                               "ocrTextLength":  616,
+                                               "confidence":  0.7394961234210526,
+                                               "ocrTextLength":  611,
                                                "needsManualReview":  false,
                                                "failureReason":  null,
                                                "imageDeleted":  true,
@@ -652,7 +652,7 @@
                                              "ok":  true,
                                              "resultMode":  "review_required",
                                              "matchQuality":  "medium",
-                                             "detectedCount":  25,
+                                             "detectedCount":  24,
                                              "matchedCount":  1,
                                              "needsUserConfirmation":  true,
                                              "autoDisplayReady":  false,
@@ -684,12 +684,11 @@
                                                                          "ì¡°ì§",
                                                                          "(ì´ê³í¨ì)",
                                                                          "ì¡°ì¬ë\u0085ìì¼",
-                                                                         "NEWSIS",
-                                                                         "80a)"
+                                                                         "NEWSIS"
                                                                      ],
                                              "detected":  [
                                                               {
-                                                                  "id":  "8cf77bed-3d35-479d-97e7-a67e72c21b92",
+                                                                  "id":  "588ed1a0-d4d7-48bd-8c39-3e375ff2c734",
                                                                   "detectedName":  "ì§ì¤ë¡ë§¥ì¤ì ",
                                                                   "matchedName":  "ì§ì¤ë¡ë§¥ì¤ì 250ë°ë¦¬ê·¸ë(ìì§í¸ë¡ë§ì´ì ìíë¬¼)",
                                                                   "medicationId":  "b2f40a2e-58f9-418c-be51-450c2d3f8944",
@@ -698,7 +697,7 @@
                                                                   "needsConfirmation":  true
                                                               },
                                                               {
-                                                                  "id":  "d40a98bd-a412-430e-a55d-298d6b6bce81",
+                                                                  "id":  "cf9f56c7-a7d4-4612-94ca-80c32ba78a17",
                                                                   "detectedName":  "ì²ë°© ìì½íì ëª\u0085ì¹­",
                                                                   "matchedName":  null,
                                                                   "medicationId":  null,
@@ -707,7 +706,7 @@
                                                                   "needsConfirmation":  true
                                                               },
                                                               {
-                                                                  "id":  "7b0deb6c-60ea-49ef-b410-d625957ffb6c",
+                                                                  "id":  "c9c54f2b-591a-40e7-bf51-41f426c3351c",
                                                                   "detectedName":  "648900880 ì§ì¤ë¡ë§¥ì¤ì 250mg(ë´)",
                                                                   "matchedName":  null,
                                                                   "medicationId":  null,
@@ -716,7 +715,7 @@
                                                                   "needsConfirmation":  true
                                                               },
                                                               {
-                                                                  "id":  "1a0c6afe-1298-443d-99e9-15a05d34d4eb",
+                                                                  "id":  "7a7b9e0a-13e0-4389-9309-ce6167eeb076",
                                                                   "detectedName":  "1í 1ì¼",
                                                                   "matchedName":  null,
                                                                   "medicationId":  null,
@@ -725,7 +724,7 @@
                                                                   "needsConfirmation":  true
                                                               },
                                                               {
-                                                                  "id":  "aa48fabb-9448-4785-b5b9-254bfc4fcb8f",
+                                                                  "id":  "3dde6351-b890-46b2-9a26-345ec164f0ee",
                                                                   "detectedName":  "655501400 ìë¦¬ì°ì¤",
                                                                   "matchedName":  null,
                                                                   "medicationId":  null,
@@ -734,7 +733,7 @@
                                                                   "needsConfirmation":  true
                                                               },
                                                               {
-                                                                  "id":  "33734151-c545-4a2a-bf49-0270ca52b5da",
+                                                                  "id":  "def10d8c-1520-4f27-999f-63a87002a484",
                                                                   "detectedName":  "643501510 ì¤í°ì´ììë°©ì (ë´ë¶)",
                                                                   "matchedName":  null,
                                                                   "medicationId":  null,
@@ -743,7 +742,7 @@
                                                                   "needsConfirmation":  true
                                                               },
                                                               {
-                                                                  "id":  "00f03fc8-53ff-4b27-a265-66881c7faedb",
+                                                                  "id":  "dcfb6c6d-5058-42bc-b989-946b0b952d8d",
                                                                   "detectedName":  "ì¤í°ì´ììë°©ì ",
                                                                   "matchedName":  null,
                                                                   "medicationId":  null,
@@ -752,7 +751,7 @@
                                                                   "needsConfirmation":  true
                                                               },
                                                               {
-                                                                  "id":  "f280e236-829a-44f2-8716-135da2ce64f8",
+                                                                  "id":  "c790fe6c-d036-4023-861e-6ee63f4d69a7",
                                                                   "detectedName":  "642102000 í°ë¬ê°ë´ë³µ)",
                                                                   "matchedName":  null,
                                                                   "medicationId":  null,
@@ -761,7 +760,7 @@
                                                                   "needsConfirmation":  true
                                                               },
                                                               {
-                                                                  "id":  "da7b4a18-d28d-4963-a5b9-11e9fdba0f86",
+                                                                  "id":  "d93aa38f-3bac-4409-9630-68a339c9505a",
                                                                   "detectedName":  "(ìêµ­ì)",
                                                                   "matchedName":  null,
                                                                   "medicationId":  null,
@@ -770,7 +769,7 @@
                                                                   "needsConfirmation":  true
                                                               },
                                                               {
-                                                                  "id":  "260118e8-a163-4621-877b-67190a942481",
+                                                                  "id":  "e10ddbc4-883b-4b22-aa4d-b92db678fc2f",
                                                                   "detectedName":  "ì¡°ì¬ì ì°¸ê³ ì¬í­",
                                                                   "matchedName":  null,
                                                                   "medicationId":  null,
@@ -779,7 +778,7 @@
                                                                   "needsConfirmation":  true
                                                               },
                                                               {
-                                                                  "id":  "5ec05f91-fdcc-4abe-afd7-035d4dd178d9",
+                                                                  "id":  "27967935-ade6-4178-99a5-4b7f65b4b75d",
                                                                   "detectedName":  "ì£¼ì¬ì  ì²ë°©ë´ì(ìì¡°ì  ã\u0085.",
                                                                   "matchedName":  null,
                                                                   "medicationId":  null,
@@ -788,7 +787,7 @@
                                                                   "needsConfirmation":  true
                                                               },
                                                               {
-                                                                  "id":  "73e6c1d7-61de-4d4f-94d3-2f4c0c6b200c",
+                                                                  "id":  "62af293a-5ed5-4786-8d1b-a21c378ec86f",
                                                                   "detectedName":  "ìì¸ì²ë°© )",
                                                                   "matchedName":  null,
                                                                   "medicationId":  null,
@@ -797,7 +796,7 @@
                                                                   "needsConfirmation":  true
                                                               },
                                                               {
-                                                                  "id":  "52aa0987-e35d-4d5c-b1b0-47059baeea84",
+                                                                  "id":  "4eb9bf5a-b514-498a-98d2-e66129e443f2",
                                                                   "detectedName":  "ì¬ì©ê¸°ê° êµë¶ì¼ë¡ë¶í° ( 7",
                                                                   "matchedName":  null,
                                                                   "medicationId":  null,
@@ -806,7 +805,7 @@
                                                                   "needsConfirmation":  true
                                                               },
                                                               {
-                                                                  "id":  "2696c204-97ef-4073-91f7-554d715d7703",
+                                                                  "id":  "44ebc7bc-f871-48e9-b422-9a5f3b690256",
                                                                   "detectedName":  "ì¼ê° ì¬ì©ê¸°ê°ë´ì ì½êµ­ì ì ì¶íì¬ì¼ í©ëë¤.",
                                                                   "matchedName":  null,
                                                                   "medicationId":  null,
@@ -815,7 +814,7 @@
                                                                   "needsConfirmation":  true
                                                               },
                                                               {
-                                                                  "id":  "6eacf204-6f06-4dd0-9172-174eeb9f5b05",
+                                                                  "id":  "20e5a328-f882-418f-bad7-d00c04f1129b",
                                                                   "detectedName":  "ì ì½",
                                                                   "matchedName":  null,
                                                                   "medicationId":  null,
@@ -824,7 +823,7 @@
                                                                   "needsConfirmation":  true
                                                               },
                                                               {
-                                                                  "id":  "5086ed4c-ad52-4838-91a7-5a91cdb66e2d",
+                                                                  "id":  "7754cba3-3bc2-4877-bc16-c6ff2813f134",
                                                                   "detectedName":  "ì¡° ì¡°ì ê¸°ê´ì",
                                                                   "matchedName":  null,
                                                                   "medicationId":  null,
@@ -833,7 +832,7 @@
                                                                   "needsConfirmation":  true
                                                               },
                                                               {
-                                                                  "id":  "70ecea8d-7dd0-4a40-92b7-207187b8167c",
+                                                                  "id":  "5a437c37-0557-4fd6-80ea-856f54df7d51",
                                                                   "detectedName":  "ì²ë°©ì ë³ê²½",
                                                                   "matchedName":  null,
                                                                   "medicationId":  null,
@@ -842,7 +841,7 @@
                                                                   "needsConfirmation":  true
                                                               },
                                                               {
-                                                                  "id":  "a7a31093-cd10-4efe-aa7d-20f0675e9137",
+                                                                  "id":  "a7e9ffae-5350-457a-ad26-cafb6b3084bd",
                                                                   "detectedName":  "íì¸ëì²´ì ê·¸ ë´ì© ë±",
                                                                   "matchedName":  null,
                                                                   "medicationId":  null,
@@ -851,7 +850,7 @@
                                                                   "needsConfirmation":  true
                                                               },
                                                               {
-                                                                  "id":  "7be6a851-5d48-4274-af1c-bd473db928cf",
+                                                                  "id":  "ed4700db-f3d5-4616-ad0b-940511dd151c",
                                                                   "detectedName":  "ì¡°ì  ì½ì¬ ì±ëª\u0085",
                                                                   "matchedName":  null,
                                                                   "medicationId":  null,
@@ -860,7 +859,7 @@
                                                                   "needsConfirmation":  true
                                                               },
                                                               {
-                                                                  "id":  "6b7431bd-f0a1-4cb4-a994-519bcbbe88a3",
+                                                                  "id":  "e4417869-b5e6-485d-b280-9afca0b08c3f",
                                                                   "detectedName":  "(ìëª\u0085 ëë ë ì¸)",
                                                                   "matchedName":  null,
                                                                   "medicationId":  null,
@@ -869,7 +868,7 @@
                                                                   "needsConfirmation":  true
                                                               },
                                                               {
-                                                                  "id":  "f3552ecd-577b-4b67-9c00-a425bd181313",
+                                                                  "id":  "396d540b-6a76-4986-94d8-15ae4152f457",
                                                                   "detectedName":  "(ì´ê³í¨ì)",
                                                                   "matchedName":  null,
                                                                   "medicationId":  null,
@@ -878,7 +877,7 @@
                                                                   "needsConfirmation":  true
                                                               },
                                                               {
-                                                                  "id":  "83bc77e3-adba-4e0c-a078-bb8640e375d8",
+                                                                  "id":  "882ae31d-4d0b-42b7-8e03-e1ad01c35a5e",
                                                                   "detectedName":  "ì¡°ì¬ë\u0085ìì¼",
                                                                   "matchedName":  null,
                                                                   "medicationId":  null,
@@ -887,16 +886,7 @@
                                                                   "needsConfirmation":  true
                                                               },
                                                               {
-                                                                  "id":  "3f82024b-f7f9-4d85-b734-2f5e4dd27bce",
-                                                                  "detectedName":  "NEWSIS",
-                                                                  "matchedName":  null,
-                                                                  "medicationId":  null,
-                                                                  "confidence":  0,
-                                                                  "matchQuality":  "none",
-                                                                  "needsConfirmation":  true
-                                                              },
-                                                              {
-                                                                  "id":  "302dda12-d83a-4b83-b15d-8cdb4b4e625d",
+                                                                  "id":  "b6249eb7-a1c9-40c0-b0bc-8d76df0df247",
                                                                   "detectedName":  "[ë³ì§ ì 10í¸ì]",
                                                                   "matchedName":  null,
                                                                   "medicationId":  null,
@@ -905,8 +895,8 @@
                                                                   "needsConfirmation":  true
                                                               },
                                                               {
-                                                                  "id":  "ba6f9701-452a-438d-bf21-8b42bda2374d",
-                                                                  "detectedName":  "80a)",
+                                                                  "id":  "1f4860a8-130f-4d33-8e4d-51a8689f2aba",
+                                                                  "detectedName":  "NEWSIS",
                                                                   "matchedName":  null,
                                                                   "medicationId":  null,
                                                                   "confidence":  0,
@@ -918,18 +908,18 @@
                              "confirm":  {
                                              "ok":  true,
                                              "alreadyExists":  false,
-                                             "userMedicationId":  "e0751533-85e2-4b2e-a812-df292673ba21",
+                                             "userMedicationId":  "0b668b83-4922-46ab-9786-0b55108079e8",
                                              "medicationId":  "b2f40a2e-58f9-418c-be51-450c2d3f8944",
-                                             "sourceScanId":  "b2601733-377c-4e77-aa30-698b0ddb67f6"
+                                             "sourceScanId":  "3d0f9e17-3843-4f90-a698-70bfca65fe34"
                                          }
                          }
                      ],
     "confirmedMedication":  {
                                 "image":  "prescription_5.jpg",
-                                "scanId":  "b2601733-377c-4e77-aa30-698b0ddb67f6",
-                                "detectedMedicationId":  "8cf77bed-3d35-479d-97e7-a67e72c21b92",
+                                "scanId":  "3d0f9e17-3843-4f90-a698-70bfca65fe34",
+                                "detectedMedicationId":  "588ed1a0-d4d7-48bd-8c39-3e375ff2c734",
                                 "matchedName":  "ì§ì¤ë¡ë§¥ì¤ì 250ë°ë¦¬ê·¸ë(ìì§í¸ë¡ë§ì´ì ìíë¬¼)",
-                                "userMedicationId":  "e0751533-85e2-4b2e-a812-df292673ba21",
+                                "userMedicationId":  "0b668b83-4922-46ab-9786-0b55108079e8",
                                 "medicationId":  "b2f40a2e-58f9-418c-be51-450c2d3f8944"
                             },
     "scheduleE2E":  {
@@ -939,11 +929,15 @@
                         "suggestionCount":  0,
                         "usedFallbackSchedule":  true,
                         "scheduleOk":  true,
-                        "scheduleId":  "363b2bbf-1f8f-4a72-a6ec-a71a14366a40",
+                        "scheduleCount":  2,
+                        "scheduleId":  "1229dfb7-533d-480a-ae49-e56c15cb3a09",
+                        "confirmExistingOk":  true,
+                        "confirmExistingAlreadyExists":  true,
+                        "confirmExistingScheduleCount":  2,
                         "checklistBeforeOk":  true,
                         "checklistBeforeSummary":  {
-                                                       "total":  1,
-                                                       "pending":  1,
+                                                       "total":  2,
+                                                       "pending":  2,
                                                        "taken":  0,
                                                        "missed":  0,
                                                        "skipped":  0
@@ -952,8 +946,8 @@
                         "logStatus":  "taken",
                         "checklistAfterOk":  true,
                         "checklistAfterSummary":  {
-                                                      "total":  1,
-                                                      "pending":  0,
+                                                      "total":  2,
+                                                      "pending":  1,
                                                       "taken":  1,
                                                       "missed":  0,
                                                       "skipped":  0
@@ -962,6 +956,26 @@
 
                                    ]
                     },
+    "chatContextChecks":  [
+                              {
+                                  "request":  "userMedicationId",
+                                  "ok":  true,
+                                  "source":  "user_medication",
+                                  "error":  null
+                              },
+                              {
+                                  "request":  "detectedMedicationId",
+                                  "ok":  true,
+                                  "source":  "detected_medication",
+                                  "error":  null
+                              },
+                              {
+                                  "request":  "medicationId",
+                                  "ok":  true,
+                                  "source":  "medication_master",
+                                  "error":  null
+                              }
+                          ],
     "cleanup":  {
                     "tempUserDeleted":  true
                 }
