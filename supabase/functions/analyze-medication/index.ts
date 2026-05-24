@@ -1,4 +1,6 @@
 import { handleCors } from "../_shared/cors.ts";
+import { generateNgramApiParams } from "../_shared/api_preprocessor.ts";
+import { calculateWeightedJamoDistance } from "../_shared/jamo_matcher.ts";
 import { fetchDrugItemsByName, upsertDrugApiItems } from "../_shared/drug_master.ts";
 import { errorResponse, HttpError, json, readJson } from "../_shared/http.ts";
 import { logApiUsage, requireUser } from "../_shared/supabase.ts";
@@ -208,29 +210,72 @@ function timeoutSignal(ms: number): AbortSignal {
   return controller.signal;
 }
 
+/**
+ * OCR 원문에서 최소 2글자 이상의 의미 있는 토큰(n-gram)들을 추출하여
+ * 공공 API 조회 시 0건 리턴(Zero-hit)을 방지하는 파라미터 후보군 생성 함수
+ */
+export function generateNgramApiParams(rawText: string, n: number = 2): string[] {
+  // 1. 노이즈 제거: 공백, 단위 명칭 등 제거
+  let cleaned = rawText.replace(/\s+/g, "").trim().replace(/(정|캡슐|시럽|밀리그램|mg)/g, "");
+  if (cleaned.length < n) return [cleaned];
+
+  const grams = new Set<string>();
+  
+  // 2. 전체 문자열 및 n-gram 토큰들 추출
+  grams.add(cleaned);
+  for (let i = 0; i <= cleaned.length - n; i++) {
+    grams.add(cleaned.substring(i, i + n));
+  }
+
+  // 3. API 비용/트래픽을 고려해 상위 3개 키워드만 엄선
+  return Array.from(grams).slice(0, 3);
+}
+
+/**
+ * 자모 혼동 가중치를 반영하여, OCR 오인식(찐빠) 상황에서도
+ * 가장 매칭 확률이 높은 약품을 찾아내기 위한 거리 점수 계산 함수
+ */
+export function getBestMatchByJamo(
+  ocrTerm: string, 
+  candidates: any[]
+): { item: any, score: number } | null {
+  if (!candidates || candidates.length === 0) return null;
+
+  const ranked = candidates
+    .map(item => ({ 
+      item, 
+      score: calculateWeightedJamoDistance(ocrTerm, item.ITEM_NAME || "") 
+    }))
+    .sort((a, b) => a.score - b.score);
+
+  // 2.5점 이내(신뢰 구간)인 경우만 승인
+  return ranked[0].score < 2.5 ? ranked[0] : null;
+}
+
 async function loadMatches(
   serviceClient: any,
   candidates: string[],
 ): Promise<Map<string, MedicationCandidateMatch>> {
   const { data: matches, error: matchError } = candidates.length > 0
-    ? await serviceClient
-      .rpc("find_medication_candidates_bulk", {
-        search_texts: candidates,
-        max_results: 1,
-      })
+  ? await serviceClient
+  .rpc("find_medication_candidates_bulk", {
+    search_texts: candidates,
+    max_results: 1,
+  })
     : { data: [], error: null };
 
-  if (matchError) throw new HttpError(500, "Failed to match medication candidates", matchError);
-
-  const bestByCandidate = new Map<string, MedicationCandidateMatch>();
-  for (const match of (matches ?? []) as MedicationCandidateMatch[]) {
-    if (!bestByCandidate.has(match.search_text)) {
-      bestByCandidate.set(match.search_text, match);
+    if (matchError) throw new HttpError(500, "Failed to match medication candidates", matchError);
+    
+    const bestByCandidate = new Map<string, MedicationCandidateMatch>();
+    for (const match of (matches ?? []) as MedicationCandidateMatch[]) {
+      if (!bestByCandidate.has(match.search_text)) {
+        bestByCandidate.set(match.search_text, match);
+      }
     }
+    return bestByCandidate;
   }
-  return bestByCandidate;
-}
-
+  
+// =============================== LEGACY ===============================
 async function runPublicDrugLookup(
   serviceClient: any,
   candidates: string[],
@@ -302,6 +347,128 @@ async function runPublicDrugLookup(
   };
 }
 
+async function runPublicDrugLookup(
+  serviceClient: any,
+  candidates: string[],
+  bestByCandidate: Map<string, MedicationCandidateMatch>,
+  ocrConfidence: number | null,
+): Promise<PublicLookupResult> {
+  const unmatched = candidates.filter((c) => !bestByCandidate.has(c));
+  
+  if (unmatched.length === 0) {
+    return defaultPublicLookup("not_needed", "내부 의약품 DB에서 후보를 찾았습니다.");
+  }
+  
+  if (ocrConfidence !== null && ocrConfidence < 0.65) {
+    return defaultPublicLookup("skipped_low_confidence", "OCR 신뢰도가 낮아 공공 의약품 API 자동 조회를 건너뛰었습니다.");
+  }
+
+  const lookupCandidates = unmatched.filter(isPublicLookupCandidate).slice(0, 5);
+  if (lookupCandidates.length === 0) {
+    return defaultPublicLookup("not_needed", "공공 API 조회 조건을 만족하는 약품 후보가 없습니다.");
+  }
+
+  const startedAt = Date.now();
+  const overallTimeoutMs = 8000;
+  let insertedMedicationCount = 0;
+  let successCount = 0;
+  let failureCount = 0;
+  const forceConfirmationCandidates = new Set<string>();
+
+  for (const rawOcrTerm of lookupCandidates) {
+    const remaining = overallTimeoutMs - (Date.now() - startedAt);
+    if (remaining <= 0) {
+      failureCount += 1;
+      break;
+    }
+
+    try {
+      // L3: N-gram 파라미터 생성
+      const keywords = generateNgramApiParams(rawOcrTerm);
+      
+      // 외부 API 호출: 여기도 try-catch로 감싸서 API 응답 장애에 대비함
+      const apiResults = await Promise.all(
+        keywords.map(k => fetchDrugItemsByName(k).catch(() => []))
+      );
+      const mergedItems = apiResults.flat();
+
+      // L4: 자모 정밀 매칭
+      const match = getBestMatchByJamo(rawOcrTerm, mergedItems);
+      
+      if (match) {
+        // DB Upsert: 가장 위험한 부분, 여기서 에러가 나도 파이프라인 전체가 죽지 않도록 예외 처리
+        try {
+          const upsertResult = await upsertDrugApiItems(serviceClient, [match.item]);
+          insertedMedicationCount += upsertResult.medicationCount;
+          
+          bestByCandidate.set(rawOcrTerm, {
+            search_text: rawOcrTerm,
+            id: upsertResult.medicationIds[0],
+            item_seq: match.item.ITEM_SEQ || match.item.item_seq || null,
+            item_name: match.item.ITEM_NAME || match.item.item_name || "",
+            entp_name: match.item.ENTP_NAME || match.item.entp_name || null,
+            edi_code: match.item.EDI_CODE || match.item.edi_code || null,
+            similarity_score: 1.0 - (match.score / 10),
+            match_rank: 1,
+            match_source: "fuzzy"
+          });
+          successCount += 1;
+        } catch {
+          failureCount += 1;
+        }
+      } else {
+        forceConfirmationCandidates.add(rawOcrTerm);
+      }
+    } catch (pipelineError) {
+      // 파이프라인 전체 에러 핸들링
+      console.error(`[폴백 파이프라인 실패] ${rawOcrTerm}:`, pipelineError);
+      failureCount += 1;
+    }
+  }
+
+  const status: PublicLookupStatus = insertedMedicationCount > 0 && failureCount > 0
+    ? "partial"
+    : insertedMedicationCount > 0
+    ? "succeeded"
+    : failureCount > 0 && successCount === 0
+    ? "failed"
+    : "succeeded";
+
+  return {
+    attempted: true,
+    status,
+    queriedCandidates: lookupCandidates,
+    insertedMedicationCount,
+    message: status === "failed"
+      ? "공공 의약품 API 조회에 실패했습니다."
+      : insertedMedicationCount > 0
+      ? "공공 의약품 API에서 정밀 매칭된 정보를 저장했습니다."
+      : "조회는 완료됐지만 매칭되는 약품을 찾지 못했습니다.",
+    forceConfirmationCandidates,
+  };
+}
+
+  const status: PublicLookupStatus = insertedMedicationCount > 0 && failureCount > 0
+    ? "partial"
+    : insertedMedicationCount > 0
+    ? "succeeded"
+    : failureCount > 0 && successCount === 0
+    ? "failed"
+    : "succeeded";
+
+  return {
+    attempted: true,
+    status,
+    queriedCandidates: lookupCandidates,
+    insertedMedicationCount,
+    message: status === "failed"
+      ? "공공 의약품 API 조회에 실패했습니다."
+      : insertedMedicationCount > 0
+      ? "공공 의약품 API에서 정밀 매칭된 정보를 저장했습니다."
+      : "조회는 완료됐지만 매칭되는 약품을 찾지 못했습니다.",
+    forceConfirmationCandidates,
+  };
+}
 Deno.serve(async (req) => {
   const cors = handleCors(req);
   if (cors) return cors;
@@ -326,9 +493,14 @@ Deno.serve(async (req) => {
     if (!scan.ocr_text) throw new HttpError(400, "Scan session has no OCR text");
 
     const candidates = extractCandidates(scan.ocr_text);
+    
+
+    
     const detectedRows = [];
     const unmatchedCandidates: string[] = [];
     let bestByCandidate = await loadMatches(serviceClient, candidates);
+
+    //===
     const publicLookup = await runPublicDrugLookup(
       serviceClient,
       candidates,
