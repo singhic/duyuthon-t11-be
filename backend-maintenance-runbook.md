@@ -70,6 +70,16 @@ DUR known medications batch:
 
 운영자가 삭제 대상 수를 확인하기 전까지 scheduled job은 `dryRun=true`로 둔다.
 
+운영 스냅샷:
+
+```json
+{
+  "job": "operation_snapshot"
+}
+```
+
+`operation_snapshot`은 `maintenance-runner` 전용 운영 조회 job이다. 실발송/실삭제/동기화는 수행하지 않고 `sync_job_runs`, 약품 수, DUR count, FCM token/delivery count, reminder dry-run, redaction dry-run 결과만 반환한다.
+
 ## 3. 운영 확인 SQL
 
 오늘 OCR 호출 수:
@@ -235,3 +245,52 @@ limit 20;
 - 위 “민감정보 삭제 대상” SQL 또는 dry-run 응답에서 삭제 대상 수를 운영자가 확인했다.
 - 삭제 대상이 보존 정책과 맞는다.
 - 첫 실삭제 후 `audit_logs.action = 'redact_expired_sensitive_data'` 기록을 확인한다.
+
+## 6. 운영 스냅샷
+
+확인 시각: 2026-05-24 12:35 KST
+
+검증 경로:
+
+- `maintenance-runner`에 `operation_snapshot` job 추가 및 원격 배포
+- cron secret 없는 호출: `401`
+- vault의 `maintenance_runner_cron_secret`을 사용한 pg_net 호출: `200`
+
+현재 숫자:
+
+| 항목 | 값 |
+|---|---:|
+| medications total | 847 |
+| medications with item_seq | 847 |
+| missing efficacy | 4 |
+| missing dosage | 4 |
+| missing precautions | 4 |
+| missing storage_method | 4 |
+| drug_interactions total | 19 |
+| mfds_dur_usjnt_taboo interactions | 18 |
+| notification_tokens total | 0 |
+| enabled notification_tokens | 0 |
+| delivery pending/sent/failed/skipped | 0 / 0 / 0 / 0 |
+| reminder dry-run pendingCount | 0 |
+| redaction scan OCR targets | 0 |
+| redaction OCR job targets | 0 |
+| redaction chat message targets | 0 |
+
+최근 `sync_job_runs` 핵심 이력:
+
+| job | status | cursor | next | batch | requests | upserts | error |
+|---|---|---:|---:|---:|---:|---:|---|
+| sync_dur_known_medications | succeeded | 42 | 52 | 10 | 10 | 1 |  |
+| sync_dur_known_medications | succeeded | 32 | 42 | 10 | 10 | 104 |  |
+| sync_dur_known_medications | succeeded | 22 | 32 | 10 | 10 | 57 |  |
+| sync_dur_known_medications | failed | 22 | 22 | 20 | 0 | 0 | Function failed with IDLE_TIMEOUT before handler could finish |
+| sync_dur_known_medications | succeeded | 2 | 22 | 20 | 20 | 15 |  |
+| sync_drug_master_page | succeeded | 20 | 21 | 20 | 1 | 73 |  |
+
+판정:
+
+- DUR은 전체 847개 중 offset 52까지 진행된 상태다. 전체 순회 완료가 아니므로 운영 적재는 계속 진행해야 한다.
+- `medicationLimit=20`에서 `IDLE_TIMEOUT`이 발생한 이력이 있어 scheduled job의 `medicationLimit=10` 설정은 유지한다.
+- reminder cron은 pg_net 이력에서 15분마다 `200`, `dryRun=true`, `pendingCount=0`으로 동작 중이다.
+- redaction daily cron은 등록되어 있으나 스냅샷 시각 기준 scheduled 실행 시간이 아직 지나지 않았다. 수동 dry-run 결과 삭제 대상은 0건이다.
+- FCM token이 0개이므로 실제 발송 전환 금지 상태다.

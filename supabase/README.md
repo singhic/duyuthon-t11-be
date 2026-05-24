@@ -211,6 +211,10 @@ FCM 전송 조건:
   - 관리자 전용
   - 기본 `dryRun=true`
   - 만료된 OCR 원문, OCR 원본 JSON, 챗봇 메시지 본문을 삭제/마스킹
+- `maintenance-runner` 운영 wrapper 추가
+  - `CRON_SECRET` header 기반
+  - scheduled job은 기존 admin JWT 함수가 아니라 이 wrapper만 호출
+  - `operation_snapshot`으로 실발송/실삭제 없이 운영 카운트와 dry-run 상태 조회 가능
 - `sync-dur-interactions` 운영 함수 추가
   - 식품의약품안전처 DUR 병용금기 API(`getUsjntTabooInfoList03`) 기반
   - `drug_interactions`에 `source=mfds_dur_usjnt_taboo`로 저장
@@ -313,6 +317,26 @@ Scheduled job 전용 운영 wrapper:
 ```
 
 `maintenance-runner`는 `verify_jwt=false`이며 `x-cron-secret: <CRON_SECRET>` header가 있어야 호출된다. 스케줄러는 기존 admin JWT 함수가 아니라 `maintenance-runner`를 호출한다. 자세한 호출 body와 모니터링 SQL은 `backend-maintenance-runbook.md`를 따른다.
+
+운영 스냅샷 조회:
+
+```json
+{
+  "job": "operation_snapshot"
+}
+```
+
+2026-05-24 12:35 KST 기준 운영 스냅샷:
+
+- `maintenance-runner` cron secret 없는 호출은 `401`
+- `operation_snapshot` cron-secret 호출은 `200`
+- `medications = 847`, `item_seq` 보유 847
+- 주요 약품 정보 누락: 효능/복용법/주의사항/보관법 각 4건
+- `drug_interactions = 19`, `source=mfds_dur_usjnt_taboo` 18건
+- DUR known medications 최근 성공 cursor: `42 -> 52`
+- `medicationLimit=20` 실행에서 `IDLE_TIMEOUT` 실패 이력이 있어 scheduled job은 `medicationLimit=10` 유지
+- `notification_tokens = 0`, reminder dry-run pending 0
+- redaction dry-run 대상 0건
 
 운영자 DUR batch 동기화:
 

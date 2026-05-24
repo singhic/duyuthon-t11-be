@@ -10,7 +10,8 @@ type MaintenanceJob =
   | "sync_drug_master_page"
   | "sync_dur_known_medications"
   | "send_medication_reminders"
-  | "redact_expired_sensitive_data";
+  | "redact_expired_sensitive_data"
+  | "operation_snapshot";
 
 type RequestBody = {
   job?: MaintenanceJob;
@@ -58,6 +59,99 @@ function reminderWindow(body: RequestBody): { windowStart?: string; windowEnd?: 
   };
 }
 
+async function exactCount(serviceClient: any, table: string, buildQuery: (query: any) => any = (query) => query): Promise<number> {
+  const { count, error } = await buildQuery(
+    serviceClient
+      .from(table)
+      .select("id", { count: "exact", head: true }),
+  );
+  if (error) throw new HttpError(500, `Failed to count ${table}`, error);
+  return count ?? 0;
+}
+
+async function runOperationSnapshot(serviceClient: any): Promise<Record<string, unknown>> {
+  const generatedAt = new Date().toISOString();
+
+  const [
+    recentSyncRuns,
+    medicationCount,
+    medicationWithItemSeqCount,
+    missingEfficacyCount,
+    missingDosageCount,
+    missingPrecautionsCount,
+    missingStorageMethodCount,
+    drugInteractionCount,
+    mfdsDurInteractionCount,
+    notificationTokenCount,
+    enabledNotificationTokenCount,
+    deliveryPendingCount,
+    deliverySentCount,
+    deliveryFailedCount,
+    deliverySkippedCount,
+    reminderDryRun,
+    redactionDryRun,
+  ] = await Promise.all([
+    serviceClient
+      .from("sync_job_runs")
+      .select("job_name,status,started_at,finished_at,cursor_offset,next_cursor_offset,batch_size,request_count,inserted_or_updated_count,skipped_count,error_message")
+      .order("started_at", { ascending: false })
+      .limit(10),
+    exactCount(serviceClient, "medications"),
+    exactCount(serviceClient, "medications", (query) => query.not("item_seq", "is", null)),
+    exactCount(serviceClient, "medications", (query) => query.is("efficacy", null)),
+    exactCount(serviceClient, "medications", (query) => query.is("dosage", null)),
+    exactCount(serviceClient, "medications", (query) => query.is("precautions", null)),
+    exactCount(serviceClient, "medications", (query) => query.is("storage_method", null)),
+    exactCount(serviceClient, "drug_interactions"),
+    exactCount(serviceClient, "drug_interactions", (query) => query.eq("source", "mfds_dur_usjnt_taboo")),
+    exactCount(serviceClient, "notification_tokens"),
+    exactCount(serviceClient, "notification_tokens", (query) => query.eq("enabled", true)),
+    exactCount(serviceClient, "medication_notification_deliveries", (query) => query.eq("status", "pending")),
+    exactCount(serviceClient, "medication_notification_deliveries", (query) => query.eq("status", "sent")),
+    exactCount(serviceClient, "medication_notification_deliveries", (query) => query.eq("status", "failed")),
+    exactCount(serviceClient, "medication_notification_deliveries", (query) => query.eq("status", "skipped")),
+    runMedicationReminders({ dryRun: true }),
+    runRedactExpiredSensitiveData(serviceClient, { dryRun: true }),
+  ]);
+
+  if (recentSyncRuns.error) {
+    throw new HttpError(500, "Failed to load recent sync job runs", recentSyncRuns.error);
+  }
+
+  return {
+    generatedAt,
+    syncJobs: {
+      recent: recentSyncRuns.data ?? [],
+    },
+    medications: {
+      totalCount: medicationCount,
+      withItemSeqCount: medicationWithItemSeqCount,
+      missing: {
+        efficacy: missingEfficacyCount,
+        dosage: missingDosageCount,
+        precautions: missingPrecautionsCount,
+        storageMethod: missingStorageMethodCount,
+      },
+    },
+    drugInteractions: {
+      totalCount: drugInteractionCount,
+      mfdsDurUsjntTabooCount: mfdsDurInteractionCount,
+    },
+    notifications: {
+      tokenCount: notificationTokenCount,
+      enabledTokenCount: enabledNotificationTokenCount,
+      deliveryStatusCounts: {
+        pending: deliveryPendingCount,
+        sent: deliverySentCount,
+        failed: deliveryFailedCount,
+        skipped: deliverySkippedCount,
+      },
+      reminderDryRun,
+    },
+    redactionDryRun,
+  };
+}
+
 Deno.serve(async (req) => {
   const cors = handleCors(req);
   if (cors) return cors;
@@ -96,6 +190,8 @@ Deno.serve(async (req) => {
       result = await runRedactExpiredSensitiveData(serviceClient, {
         dryRun: body.dryRun ?? true,
       });
+    } else if (body.job === "operation_snapshot") {
+      result = await runOperationSnapshot(serviceClient);
     } else {
       throw new HttpError(400, "Unsupported maintenance job");
     }
