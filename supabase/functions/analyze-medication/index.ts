@@ -276,76 +276,76 @@ async function loadMatches(
   }
   
 // =============================== LEGACY ===============================
-async function runPublicDrugLookup(
-  serviceClient: any,
-  candidates: string[],
-  bestByCandidate: Map<string, MedicationCandidateMatch>,
-  ocrConfidence: number | null,
-): Promise<PublicLookupResult> {
-  const unmatched = candidates.filter((candidate) => !bestByCandidate.has(candidate));
-  if (unmatched.length === 0) {
-    return defaultPublicLookup("not_needed", "내부 의약품 DB에서 후보를 찾았습니다. 공공 API 추가 조회가 필요하지 않습니다.");
-  }
-  if (ocrConfidence !== null && ocrConfidence < 0.65) {
-    return defaultPublicLookup("skipped_low_confidence", "OCR 신뢰도가 낮아 공공 의약품 API 자동 조회를 건너뛰었습니다.");
-  }
+// async function runPublicDrugLookup(
+//   serviceClient: any,
+//   candidates: string[],
+//   bestByCandidate: Map<string, MedicationCandidateMatch>,
+//   ocrConfidence: number | null,
+// ): Promise<PublicLookupResult> {
+//   const unmatched = candidates.filter((candidate) => !bestByCandidate.has(candidate));
+//   if (unmatched.length === 0) {
+//     return defaultPublicLookup("not_needed", "내부 의약품 DB에서 후보를 찾았습니다. 공공 API 추가 조회가 필요하지 않습니다.");
+//   }
+//   if (ocrConfidence !== null && ocrConfidence < 0.65) {
+//     return defaultPublicLookup("skipped_low_confidence", "OCR 신뢰도가 낮아 공공 의약품 API 자동 조회를 건너뛰었습니다.");
+//   }
 
-  const lookupCandidates = unmatched.filter(isPublicLookupCandidate).slice(0, 5);
-  if (lookupCandidates.length === 0) {
-    return defaultPublicLookup("not_needed", "공공 API 조회 조건을 만족하는 약품 후보가 없습니다.");
-  }
+//   const lookupCandidates = unmatched.filter(isPublicLookupCandidate).slice(0, 5);
+//   if (lookupCandidates.length === 0) {
+//     return defaultPublicLookup("not_needed", "공공 API 조회 조건을 만족하는 약품 후보가 없습니다.");
+//   }
 
-  const startedAt = Date.now();
-  const overallTimeoutMs = 8000;
-  let insertedMedicationCount = 0;
-  let successCount = 0;
-  let failureCount = 0;
-  const forceConfirmationCandidates = new Set<string>();
+//   const startedAt = Date.now();
+//   const overallTimeoutMs = 8000;
+//   let insertedMedicationCount = 0;
+//   let successCount = 0;
+//   let failureCount = 0;
+//   const forceConfirmationCandidates = new Set<string>();
 
-  for (const candidate of lookupCandidates) {
-    const remaining = overallTimeoutMs - (Date.now() - startedAt);
-    if (remaining <= 0) {
-      failureCount += 1;
-      break;
-    }
+//   for (const candidate of lookupCandidates) {
+//     const remaining = overallTimeoutMs - (Date.now() - startedAt);
+//     if (remaining <= 0) {
+//       failureCount += 1;
+//       break;
+//     }
 
-    try {
-      const items = await fetchDrugItemsByName(candidate, {
-        numOfRows: 10,
-        signal: timeoutSignal(Math.min(4000, remaining)),
-      });
-      if (items.length !== 1) {
-        forceConfirmationCandidates.add(candidate);
-      }
-      const upsertResult = await upsertDrugApiItems(serviceClient, items);
-      insertedMedicationCount += upsertResult.medicationCount;
-      successCount += 1;
-    } catch {
-      failureCount += 1;
-    }
-  }
+//     try {
+//       const items = await fetchDrugItemsByName(candidate, {
+//         numOfRows: 10,
+//         signal: timeoutSignal(Math.min(4000, remaining)),
+//       });
+//       if (items.length !== 1) {
+//         forceConfirmationCandidates.add(candidate);
+//       }
+//       const upsertResult = await upsertDrugApiItems(serviceClient, items);
+//       insertedMedicationCount += upsertResult.medicationCount;
+//       successCount += 1;
+//     } catch {
+//       failureCount += 1;
+//     }
+//   }
 
-  const status: PublicLookupStatus = insertedMedicationCount > 0 && failureCount > 0
-    ? "partial"
-    : insertedMedicationCount > 0
-    ? "succeeded"
-    : failureCount > 0 && successCount === 0
-    ? "failed"
-    : "succeeded";
+//   const status: PublicLookupStatus = insertedMedicationCount > 0 && failureCount > 0
+//     ? "partial"
+//     : insertedMedicationCount > 0
+//     ? "succeeded"
+//     : failureCount > 0 && successCount === 0
+//     ? "failed"
+//     : "succeeded";
 
-  return {
-    attempted: true,
-    status,
-    queriedCandidates: lookupCandidates,
-    insertedMedicationCount,
-    message: status === "failed"
-      ? "공공 의약품 API 조회에 실패했습니다. 내부 DB 기준 결과만 반환합니다."
-      : insertedMedicationCount > 0
-      ? "공공 의약품 API에서 찾은 약품 정보를 저장하고 다시 매칭했습니다."
-      : "공공 의약품 API 조회는 완료됐지만 추가로 저장할 약품을 찾지 못했습니다.",
-    forceConfirmationCandidates,
-  };
-}
+//   return {
+//     attempted: true,
+//     status,
+//     queriedCandidates: lookupCandidates,
+//     insertedMedicationCount,
+//     message: status === "failed"
+//       ? "공공 의약품 API 조회에 실패했습니다. 내부 DB 기준 결과만 반환합니다."
+//       : insertedMedicationCount > 0
+//       ? "공공 의약품 API에서 찾은 약품 정보를 저장하고 다시 매칭했습니다."
+//       : "공공 의약품 API 조회는 완료됐지만 추가로 저장할 약품을 찾지 못했습니다.",
+//     forceConfirmationCandidates,
+//   };
+// }
 
 async function runPublicDrugLookup(
   serviceClient: any,
