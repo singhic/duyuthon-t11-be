@@ -18,6 +18,13 @@ Project URL: https://hygsrrmoawezonahnljn.supabase.co
 ```env
 VITE_SUPABASE_URL=https://hygsrrmoawezonahnljn.supabase.co
 VITE_SUPABASE_ANON_KEY=<Supabase anon 또는 publishable key>
+VITE_FIREBASE_API_KEY=<Firebase web api key>
+VITE_FIREBASE_AUTH_DOMAIN=iyakmoji.firebaseapp.com
+VITE_FIREBASE_PROJECT_ID=iyakmoji
+VITE_FIREBASE_STORAGE_BUCKET=iyakmoji.firebasestorage.app
+VITE_FIREBASE_MESSAGING_SENDER_ID=478796151576
+VITE_FIREBASE_APP_ID=1:478796151576:web:e25daf3fc1cc32345ffc6d
+VITE_FIREBASE_WEB_PUSH_VAPID_KEY=<Firebase Console Web Push certificate key>
 ```
 
 ### Next.js
@@ -25,6 +32,13 @@ VITE_SUPABASE_ANON_KEY=<Supabase anon 또는 publishable key>
 ```env
 NEXT_PUBLIC_SUPABASE_URL=https://hygsrrmoawezonahnljn.supabase.co
 NEXT_PUBLIC_SUPABASE_ANON_KEY=<Supabase anon 또는 publishable key>
+NEXT_PUBLIC_FIREBASE_API_KEY=<Firebase web api key>
+NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN=iyakmoji.firebaseapp.com
+NEXT_PUBLIC_FIREBASE_PROJECT_ID=iyakmoji
+NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET=iyakmoji.firebasestorage.app
+NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=478796151576
+NEXT_PUBLIC_FIREBASE_APP_ID=1:478796151576:web:e25daf3fc1cc32345ffc6d
+NEXT_PUBLIC_FIREBASE_WEB_PUSH_VAPID_KEY=<Firebase Console Web Push certificate key>
 ```
 
 프론트엔드에 절대 넣으면 안 되는 값:
@@ -36,9 +50,13 @@ GOOGLE_SERVICE_ACCOUNT_JSON
 GOOGLE_VISION_API_KEY
 GEMINI_API_KEY
 DATA_GO_KR_SERVICE_KEY
+FCM_PROJECT_ID
+CRON_SECRET
 ```
 
 위 값들은 모두 Supabase Edge Function Secret으로만 사용한다.
+
+Firebase Web config와 VAPID public key는 프론트에 들어갈 수 있는 공개 설정이다. 다만 Google Cloud/Firebase Console에서 API key HTTP referrer 제한을 걸고, `GOOGLE_SERVICE_ACCOUNT_JSON` 같은 서버 권한 값은 절대 프론트에 넣지 않는다.
 
 ## 2. Supabase 클라이언트 생성
 
@@ -645,8 +663,8 @@ UI 표시 원칙:
 - `resultMode = "ready"`이고 `autoDisplayReady = true`이면 약품 정보 화면을 바로 보여줄 수 있다. 단, 현재 복용약 등록은 사용자 확인 후에만 한다.
 - `resultMode = "review_required"`이면 후보는 보여주되 자동 등록을 막고 재촬영/사용자 확인을 안내한다.
 - `resultMode = "no_candidates"`이면 약품명을 찾지 못한 상태이므로 재촬영 또는 약국/의료진 확인을 안내한다.
-- `needs_confirmation = true`이면 사용자가 반드시 확인해야 한다.
-- `needsUserConfirmation = true`이면 화면 전체에서 “확인 필요” 상태를 표시한다.
+- `needs_confirmation = true`는 개별 후보 row 기준이다. 해당 약품 후보 카드에 “확인 필요”를 표시하고, 사용자가 약 이름/복용법을 확인하기 전에는 등록 버튼을 확정 동작으로 처리하지 않는다.
+- `needsUserConfirmation = true`는 분석 응답 전체 기준이다. 결과 화면 상단을 “확인 필요” 상태로 표시하고, 모든 후보를 자동 확정/자동 등록하지 않는다.
 - `confidence`가 낮으면 “인식이 확실하지 않아요”를 표시한다.
 - `match_quality = "none"` 또는 `unmatchedCandidates`가 있으면 자동 등록을 막는다.
 - `warning_message`가 있으면 그대로 사용자에게 보여준다.
@@ -814,6 +832,7 @@ type GeminiChatResponse = {
   citedMedicationIds: string[];
   citedInteractionIds: string[];
   disclaimer: string;
+  safetyIntent?: "general" | "interaction" | "dose_change" | "stop_medication" | "alcohol" | "pregnancy" | "emergency" | "prompt_attack";
   interactionEvidence?: {
     mode: "not_interaction_question" | "confirmed_warning" | "no_registered_warning" | "insufficient_context";
     checkedMedicationIds: string[];
@@ -850,6 +869,7 @@ export async function askMedicationChatbot(params: {
     citedMedicationIds: string[];
     citedInteractionIds: string[];
     disclaimer: string;
+    safetyIntent?: "general" | "interaction" | "dose_change" | "stop_medication" | "alcohol" | "pregnancy" | "emergency" | "prompt_attack";
     interactionEvidence?: {
       mode: "not_interaction_question" | "confirmed_warning" | "no_registered_warning" | "insufficient_context";
       checkedMedicationIds: string[];
@@ -880,7 +900,8 @@ const result = await askMedicationChatbot({
   "needsDoctorOrPharmacist": true,
   "citedMedicationIds": [],
   "citedInteractionIds": [],
-  "disclaimer": "이 정보는 참고용이며 AI 답변은 틀릴 수 있습니다. 정확한 복약 방법과 약물 상호작용은 의사 또는 약사에게 확인하세요."
+  "disclaimer": "이 정보는 참고용이며 AI 답변은 틀릴 수 있습니다. 정확한 복약 방법과 약물 상호작용은 의사 또는 약사에게 확인하세요.",
+  "safetyIntent": "interaction"
 }
 ```
 
@@ -891,6 +912,11 @@ UI 표시 원칙:
 - `safetyLevel = "urgent"`: 강한 경고 UI, 전문가 상담 우선
 - `needsDoctorOrPharmacist = true`이면 답변 하단에 상담 안내를 반드시 표시
 - `disclaimer`는 답변 하단에 표시
+- `safetyIntent = "dose_change"`이면 용량 변경 금지 안내를 우선 표시한다.
+- `safetyIntent = "stop_medication"`이면 임의 중단 금지 안내를 우선 표시한다.
+- `safetyIntent = "alcohol"` 또는 `"pregnancy"`이면 “가능/안전” 단정 없이 상담 안내를 강조한다.
+- `safetyIntent = "emergency"`이면 챗봇 답변보다 119/응급실 안내 UI를 최우선으로 표시한다.
+- `safetyIntent = "prompt_attack"`이면 복약 범위 밖 요청 거절로 처리한다.
 - 상호작용 질문은 `gemini-chat`이 먼저 내부 DB 근거를 확인한다.
 - `interactionEvidence.mode = "insufficient_context"`이면 함께 복용 가능 여부를 표시하지 말고 전문가 확인 안내를 보여준다.
 - `interactionEvidence.mode = "no_registered_warning"`은 “안전함”이 아니라 “현재 DB에 등록된 경고 없음”으로 표시한다.
@@ -1349,6 +1375,105 @@ export async function checkInteractions(medicationId: string) {
 
 프론트 앱은 푸시 토큰을 발급받은 뒤 백엔드에 저장한다.
 
+### 15.0 Web FCM 설정
+
+Firebase Web SDK config는 프론트 공개 설정이다. 백엔드는 이 config를 직접 사용하지 않고, Supabase Secret의 `GOOGLE_SERVICE_ACCOUNT_JSON`과 `FCM_PROJECT_ID=iyakmoji`로 FCM HTTP v1 발송을 수행한다.
+
+프론트에서 추가로 준비할 값:
+
+```text
+Firebase Console > Project settings > Cloud Messaging > Web Push certificates > Key pair
+```
+
+이 VAPID key를 `VITE_FIREBASE_WEB_PUSH_VAPID_KEY` 또는 `NEXT_PUBLIC_FIREBASE_WEB_PUSH_VAPID_KEY`에 넣는다.
+
+Firebase 초기화와 token 발급 예:
+
+```ts
+import { initializeApp } from "https://www.gstatic.com/firebasejs/12.13.0/firebase-app.js";
+import {
+  getMessaging,
+  getToken,
+  isSupported,
+  onMessage,
+} from "https://www.gstatic.com/firebasejs/12.13.0/firebase-messaging.js";
+
+const firebaseConfig = {
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
+  appId: import.meta.env.VITE_FIREBASE_APP_ID,
+};
+
+export async function registerFcmToken() {
+  if (!(await isSupported())) return { supported: false, token: null };
+
+  const permission = await Notification.requestPermission();
+  if (permission !== "granted") return { supported: true, token: null };
+
+  const app = initializeApp(firebaseConfig);
+  const registration = await navigator.serviceWorker.register("/firebase-messaging-sw.js");
+  const messaging = getMessaging(app);
+  const token = await getToken(messaging, {
+    vapidKey: import.meta.env.VITE_FIREBASE_WEB_PUSH_VAPID_KEY,
+    serviceWorkerRegistration: registration,
+  });
+
+  await saveNotificationToken({
+    token,
+    provider: "fcm",
+    platform: "web",
+    timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || "Asia/Seoul",
+    enabled: true,
+  });
+
+  onMessage(messaging, (payload) => {
+    // foreground 상태에서는 앱 UI 토스트/배너로 표시한다.
+    console.info("foreground FCM message", payload);
+  });
+
+  return { supported: true, token };
+}
+```
+
+`public/firebase-messaging-sw.js` 예:
+
+```js
+importScripts("https://www.gstatic.com/firebasejs/12.13.0/firebase-app-compat.js");
+importScripts("https://www.gstatic.com/firebasejs/12.13.0/firebase-messaging-compat.js");
+
+firebase.initializeApp({
+  apiKey: "<Firebase web api key>",
+  authDomain: "iyakmoji.firebaseapp.com",
+  projectId: "iyakmoji",
+  storageBucket: "iyakmoji.firebasestorage.app",
+  messagingSenderId: "478796151576",
+  appId: "1:478796151576:web:e25daf3fc1cc32345ffc6d",
+});
+
+const messaging = firebase.messaging();
+
+messaging.onBackgroundMessage((payload) => {
+  self.registration.showNotification(
+    payload.notification?.title || "복약 시간입니다",
+    {
+      body: payload.notification?.body || "복약 일정을 확인해 주세요.",
+      icon: "/icon-192.png",
+      data: payload.data || {},
+    },
+  );
+});
+```
+
+프론트 처리 원칙:
+
+- 알림 권한을 거부해도 앱 사용은 막지 않는다.
+- token 발급 실패는 설정/권한 문제로 보고 재시도 버튼을 제공한다.
+- 같은 token은 여러 번 저장해도 백엔드에서 upsert된다.
+- token 저장 후에도 실제 발송은 백엔드 scheduled job이 수행한다.
+
 Edge Function:
 
 ```text
@@ -1495,6 +1620,8 @@ export async function sendMedicationReminders(params?: {
 - `dryRun = false`이면 발송 대상을 먼저 `medication_notification_deliveries`에 claim한 뒤 FCM HTTP v1으로 전송한다.
 - 같은 토큰/일정/날짜/시간 조합은 발송 이력으로 중복 전송을 막는다.
 - FCM이 `UNREGISTERED` 또는 invalid token 계열 오류를 반환하면 해당 토큰은 자동 비활성화된다.
+- 프론트 token 저장 전에는 운영 scheduled job을 `dryRun = true`로 유지한다.
+- token 저장 후에는 운영자가 `targetUserId`, `includeReminders = true`, `dryRun = true`로 대상 계산을 먼저 확인하고, controlled 1회 발송 성공 후에만 `dryRun = false`로 전환한다.
 
 ## 16. 보호자 연동
 
