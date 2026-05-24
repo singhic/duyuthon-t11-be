@@ -114,6 +114,7 @@ CRON_SECRET
 
 FCM 전송 조건:
 
+- 이 프로젝트의 Firebase project id는 `iyakmoji`다. `FCM_PROJECT_ID`는 이 값과 일치해야 한다.
 - `GOOGLE_SERVICE_ACCOUNT_JSON`의 서비스 계정이 Firebase 프로젝트에 속해 있거나 `FCM_PROJECT_ID` 프로젝트에 대해 Firebase Cloud Messaging 발송 권한을 가져야 한다.
 - 필요한 OAuth scope는 `https://www.googleapis.com/auth/firebase.messaging`이며 함수 내부에서 자동으로 사용한다.
 - Google Cloud IAM에서 서비스 계정에 `Firebase Cloud Messaging API Admin` 또는 동등한 `firebase.messaging.messages.create` 권한을 부여한다.
@@ -215,6 +216,10 @@ FCM 전송 조건:
   - `drug_interactions`에 `source=mfds_dur_usjnt_taboo`로 저장
   - 공공 API 응답을 `raw_source`에 남겨 추적 가능
   - `syncKnownMedications=true` 모드로 이미 적재된 `medications.item_seq` 기준 batch 동기화 가능
+- `gemini-chat` deterministic safety intent guard 추가
+  - 용량 변경, 복용 중단, 음주, 임신, 응급 증상, 프롬프트 공격은 Gemini 호출 전 고정 안전 응답으로 차단
+  - 상호작용 질문만 `interactionEvidence` DB 검사 경로를 사용
+  - 응답에 `safetyIntent`를 포함해 프론트가 UI 우선순위를 분기할 수 있음
 - `suggest-medication-schedules` 함수 추가
   - OCR 원문 또는 공공 DB 복용법에서 일정 후보 생성
   - 자동 등록하지 않고 사용자 확인 후 `medication-schedules` 호출
@@ -289,11 +294,13 @@ FCM 푸시 토큰 등록:
 
 ```json
 {
-  "dryRun": false,
+  "dryRun": true,
   "windowStart": "2026-05-22T09:00:00+09:00",
   "windowEnd": "2026-05-22T09:15:00+09:00"
 }
 ```
+
+프론트에서 FCM token 저장과 controlled 1회 실발송 검증이 끝나기 전까지 scheduled job은 `dryRun=true`로 유지한다.
 
 Scheduled job 전용 운영 wrapper:
 

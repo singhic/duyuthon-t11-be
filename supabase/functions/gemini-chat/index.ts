@@ -1,5 +1,5 @@
 import { handleCors } from "../_shared/cors.ts";
-import { askGeminiForMedicationAnswer } from "../_shared/gemini.ts";
+import { askGeminiForMedicationAnswer, type MedicationAnswer } from "../_shared/gemini.ts";
 import { errorResponse, HttpError, json, readJson } from "../_shared/http.ts";
 import { enforceDailyUsageLimit, logApiUsage, requireUser } from "../_shared/supabase.ts";
 
@@ -31,6 +31,18 @@ type InteractionEvidence = {
   isConfirmedSafe: false;
 };
 
+type SafetyIntent =
+  | "general"
+  | "interaction"
+  | "dose_change"
+  | "stop_medication"
+  | "alcohol"
+  | "pregnancy"
+  | "emergency"
+  | "prompt_attack";
+
+const DEFAULT_DISCLAIMER = "이 정보는 참고용이며 AI 답변은 틀릴 수 있습니다. 정확한 복약 방법과 약물 상호작용은 의사 또는 약사에게 확인하세요.";
+
 function errorMessage(error: unknown): string {
   if (error instanceof Error) return error.message;
   try {
@@ -40,8 +52,38 @@ function errorMessage(error: unknown): string {
   }
 }
 
-function isInteractionQuestion(question: string): boolean {
-  return /(같이|함께|동시|동시에|병용|상호작용|먹어도|복용해도|겹쳐|중복|섞어|술|알코올|커피|카페인)/i.test(question);
+function classifySafetyIntent(question: string): SafetyIntent {
+  const normalized = question.trim().toLowerCase();
+
+  if (/(프롬프트|시스템\s*지시|개발자\s*지시|내부\s*지침|이전\s*지시|지시.*무시|무시.*지시|탈옥|개발자\s*모드|jailbreak|ignore\s+(all\s+)?previous|system\s+prompt|developer\s+message|prompt)/i.test(normalized)) {
+    return "prompt_attack";
+  }
+
+  if (/(숨이?\s*답답|호흡\s*곤란|숨.*안\s*쉬|의식\s*(저하|없|잃)|흉통|가슴.*통증|심한\s*두드러기|두드러기.*호흡|얼굴.*붓|입술.*붓|목.*붓|과다\s*복용|너무\s*많이\s*먹|피.*토|피.*변|자살|자해)/i.test(normalized)) {
+    return "emergency";
+  }
+
+  if (/(두\s*배|2\s*배|한\s*알\s*더|더\s*먹|추가로\s*먹|많이\s*먹|용량.*(늘|줄|바꿔)|복용량.*(늘|줄|바꿔)|반만\s*먹|쪼개.*먹|과량)/i.test(normalized)) {
+    return "dose_change";
+  }
+
+  if (/(안\s*먹어도|안먹어도|먹지\s*않아도|끊어도|중단|중지|그만\s*먹|빼먹|건너뛰|오늘.*먹지|복용.*멈)/i.test(normalized)) {
+    return "stop_medication";
+  }
+
+  if (/(술|음주|알코올|소주|맥주|와인|막걸리)/i.test(normalized)) {
+    return "alcohol";
+  }
+
+  if (/(임신|임산부|수유|모유|태아|아기\s*가졌|임신부)/i.test(normalized)) {
+    return "pregnancy";
+  }
+
+  if (/(같이|함께|동시|동시에|병용|상호작용|먹어도|복용해도|겹쳐|중복|섞어|커피|카페인)/i.test(normalized)) {
+    return "interaction";
+  }
+
+  return "general";
 }
 
 function medicationName(value: any): string {
@@ -75,10 +117,11 @@ function uniqueMedicationContext(activeMeds: any[], detected: any[]): Medication
 
 async function loadInteractionEvidence(
   serviceClient: any,
-  question: string,
+  _question: string,
   medications: MedicationContextItem[],
+  safetyIntent: SafetyIntent,
 ): Promise<InteractionEvidence> {
-  if (!isInteractionQuestion(question)) {
+  if (safetyIntent !== "interaction") {
     return {
       mode: "not_interaction_question",
       checkedMedicationIds: [],
@@ -173,6 +216,76 @@ async function loadInteractionEvidence(
   };
 }
 
+function deterministicAnswerForIntent(intent: SafetyIntent): MedicationAnswer | null {
+  if (intent === "dose_change") {
+    return {
+      answer: "처방된 양보다 더 많이 먹거나 줄여 먹으면 위험할 수 있습니다. 두 배로 복용하지 말고, 이미 더 먹었거나 헷갈리면 약 봉투를 들고 약사 또는 의사에게 바로 확인하세요.",
+      safetyLevel: "caution",
+      needsDoctorOrPharmacist: true,
+      citedMedicationIds: [],
+      citedInteractionIds: [],
+      disclaimer: DEFAULT_DISCLAIMER,
+    };
+  }
+
+  if (intent === "stop_medication") {
+    return {
+      answer: "임의로 약을 중단하거나 건너뛰면 증상이 나빠질 수 있습니다. 오늘 복용 여부가 헷갈리면 추가로 판단하지 말고 처방한 병원이나 약국에 확인하세요.",
+      safetyLevel: "caution",
+      needsDoctorOrPharmacist: true,
+      citedMedicationIds: [],
+      citedInteractionIds: [],
+      disclaimer: DEFAULT_DISCLAIMER,
+    };
+  }
+
+  if (intent === "alcohol") {
+    return {
+      answer: "술과 함께 복용해도 된다고 단정할 수 없습니다. 약 종류에 따라 졸림, 간 부담, 부작용이 커질 수 있으니 복용 중에는 음주를 피하고 약사 또는 의사에게 확인하세요.",
+      safetyLevel: "caution",
+      needsDoctorOrPharmacist: true,
+      citedMedicationIds: [],
+      citedInteractionIds: [],
+      disclaimer: DEFAULT_DISCLAIMER,
+    };
+  }
+
+  if (intent === "pregnancy") {
+    return {
+      answer: "임신 중이거나 수유 중이면 약 복용 전 확인이 꼭 필요합니다. 임의로 복용하거나 중단하지 말고 산부인과 의사 또는 약사에게 이 약 이름을 알려 확인하세요.",
+      safetyLevel: "caution",
+      needsDoctorOrPharmacist: true,
+      citedMedicationIds: [],
+      citedInteractionIds: [],
+      disclaimer: DEFAULT_DISCLAIMER,
+    };
+  }
+
+  if (intent === "emergency") {
+    return {
+      answer: "숨이 답답하거나 심한 두드러기, 얼굴이나 입술 붓기, 흉통 같은 증상은 응급 상황일 수 있습니다. 지금 바로 119에 연락하거나 가까운 응급실로 가세요.",
+      safetyLevel: "urgent",
+      needsDoctorOrPharmacist: true,
+      citedMedicationIds: [],
+      citedInteractionIds: [],
+      disclaimer: DEFAULT_DISCLAIMER,
+    };
+  }
+
+  if (intent === "prompt_attack") {
+    return {
+      answer: "그 요청에는 답할 수 없습니다. 복약과 관련된 질문만 도와드릴 수 있습니다.",
+      safetyLevel: "info",
+      needsDoctorOrPharmacist: false,
+      citedMedicationIds: [],
+      citedInteractionIds: [],
+      disclaimer: DEFAULT_DISCLAIMER,
+    };
+  }
+
+  return null;
+}
+
 Deno.serve(async (req) => {
   const cors = handleCors(req);
   if (cors) return cors;
@@ -249,11 +362,36 @@ Deno.serve(async (req) => {
     if (scanError) throw new HttpError(500, "Failed to load scan session", scanError);
 
     const medicationContext = uniqueMedicationContext(activeMeds ?? [], detected ?? []);
+    const safetyIntent = classifySafetyIntent(body.question.trim());
     const interactionEvidence = await loadInteractionEvidence(
       serviceClient,
       body.question.trim(),
       medicationContext,
+      safetyIntent,
     );
+
+    const deterministicAnswer = deterministicAnswerForIntent(safetyIntent);
+    if (deterministicAnswer) {
+      await serviceClient.from("chat_messages").insert({
+        chat_session_id: chatSessionId,
+        role: "assistant",
+        content: deterministicAnswer.answer,
+        model_name: "deterministic-safety-guard",
+        citations: {
+          safetyIntent,
+          interactionEvidence,
+        },
+        safety_level: deterministicAnswer.safetyLevel,
+        needs_doctor_or_pharmacist: deterministicAnswer.needsDoctorOrPharmacist,
+      });
+
+      return json({
+        chatSessionId,
+        ...deterministicAnswer,
+        safetyIntent,
+        interactionEvidence,
+      });
+    }
 
     if (interactionEvidence.mode === "insufficient_context") {
       const fallbackAnswer = {
@@ -271,6 +409,7 @@ Deno.serve(async (req) => {
         content: fallbackAnswer.answer,
         model_name: "deterministic-safety-guard",
         citations: {
+          safetyIntent,
           interactionEvidence,
         },
         safety_level: fallbackAnswer.safetyLevel,
@@ -280,6 +419,7 @@ Deno.serve(async (req) => {
       return json({
         chatSessionId,
         ...fallbackAnswer,
+        safetyIntent,
         interactionEvidence,
       });
     }
@@ -307,6 +447,7 @@ Deno.serve(async (req) => {
         : null,
       activeMedications: activeMeds ?? [],
       scanMedications: detected ?? [],
+      safetyIntent,
       interactionEvidence,
       safetyPolicy: {
         doNotAdviseDoseChange: true,
@@ -356,6 +497,7 @@ Deno.serve(async (req) => {
       citations: {
         medicationIds: gemini.answer.citedMedicationIds,
         interactionIds: gemini.answer.citedInteractionIds,
+        safetyIntent,
         interactionEvidence,
         rawSafetyBlocked: gemini.safetyBlocked,
       },
@@ -373,6 +515,7 @@ Deno.serve(async (req) => {
     return json({
       chatSessionId,
       ...gemini.answer,
+      safetyIntent,
       interactionEvidence,
     });
   } catch (error) {

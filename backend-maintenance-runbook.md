@@ -52,19 +52,23 @@ DUR known medications batch:
 ```json
 {
   "job": "send_medication_reminders",
-  "dryRun": false,
+  "dryRun": true,
   "windowMinutes": 15
 }
 ```
+
+프론트 FCM token 저장과 controlled 실발송 테스트가 끝나기 전까지 scheduled job은 `dryRun=true`로 둔다.
 
 민감정보 삭제:
 
 ```json
 {
   "job": "redact_expired_sensitive_data",
-  "dryRun": false
+  "dryRun": true
 }
 ```
+
+운영자가 삭제 대상 수를 확인하기 전까지 scheduled job은 `dryRun=true`로 둔다.
 
 ## 3. 운영 확인 SQL
 
@@ -159,6 +163,20 @@ group by status
 order by status;
 ```
 
+FCM token 저장 현황:
+
+```sql
+select
+  provider,
+  platform,
+  enabled,
+  count(*) as token_count,
+  max(last_seen_at) as last_seen_at
+from public.notification_tokens
+group by provider, platform, enabled
+order by provider, platform, enabled desc;
+```
+
 invalid token 후보:
 
 ```sql
@@ -201,3 +219,19 @@ limit 20;
 - DUR batch는 offset 없이 호출해도 마지막 성공 위치부터 이어진다.
 - 알림 job은 프론트 FCM token 저장 전에는 `dryRun=true`로만 확인한다.
 - 민감정보 삭제 job은 운영 등록 전 `dryRun=true`로 대상 수를 먼저 확인한다.
+
+## 5. 실발송 전환 기준
+
+복약 알림을 `dryRun=false`로 바꾸는 조건:
+
+- 프론트에서 `notification-tokens`에 실제 사용자 FCM token을 1개 이상 저장했다.
+- 해당 사용자에게 15분 이내 활성 복약 일정이 있다.
+- `maintenance-runner` 또는 admin 함수로 `targetUserId`, `includeReminders=true`, `dryRun=true` 호출 시 `pendingCount > 0`이 확인된다.
+- 같은 조건의 controlled `dryRun=false` 1회 호출에서 `sentCount > 0`이고 `medication_notification_deliveries.status = 'sent'`가 남는다.
+- 이후 scheduled job body를 `dryRun=false`로 변경한다.
+
+민감정보 삭제를 `dryRun=false`로 바꾸는 조건:
+
+- 위 “민감정보 삭제 대상” SQL 또는 dry-run 응답에서 삭제 대상 수를 운영자가 확인했다.
+- 삭제 대상이 보존 정책과 맞는다.
+- 첫 실삭제 후 `audit_logs.action = 'redact_expired_sensitive_data'` 기록을 확인한다.
