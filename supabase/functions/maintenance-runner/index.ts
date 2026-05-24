@@ -8,6 +8,7 @@ import { createServiceClient } from "../_shared/supabase.ts";
 
 type MaintenanceJob =
   | "sync_drug_master_page"
+  | "sync_drug_master_item_seq"
   | "sync_dur_known_medications"
   | "send_medication_reminders"
   | "redact_expired_sensitive_data"
@@ -18,6 +19,9 @@ type RequestBody = {
   pageNo?: number;
   numOfRows?: number;
   itemName?: string;
+  itemSeq?: string | number;
+  itemSeqList?: Array<string | number>;
+  skipExisting?: boolean;
   medicationLimit?: number;
   medicationOffset?: number;
   maxDurRowsPerMedication?: number;
@@ -170,6 +174,12 @@ Deno.serve(async (req) => {
         pageNo: body.pageNo,
         numOfRows: body.numOfRows,
         itemName: body.itemName,
+      });
+    } else if (body.job === "sync_drug_master_item_seq") {
+      result = await runDrugMasterSync(serviceClient, {
+        itemSeq: body.itemSeq,
+        itemSeqList: body.itemSeqList,
+        skipExisting: body.skipExisting,
       });
     } else if (body.job === "sync_dur_known_medications") {
       result = await runDurSync(serviceClient, {

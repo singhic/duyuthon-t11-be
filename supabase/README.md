@@ -345,6 +345,27 @@ Scheduled job 전용 운영 wrapper:
 
 운영자 DUR batch 동기화:
 
+관리자 JWT로 `sync-drug-master`를 직접 호출할 때:
+
+```json
+{
+  "itemSeqList": ["199203266", "200307642"],
+  "skipExisting": true
+}
+```
+
+Cron secret 기반 운영 wrapper로 호출할 때:
+
+```json
+{
+  "job": "sync_drug_master_item_seq",
+  "itemSeqList": ["199203266", "200307642"],
+  "skipExisting": true
+}
+```
+
+한 번의 요청에서 `itemSeqList`는 최대 100개까지 처리한다. `skipExisting=true`를 주면 이미 `medications.item_seq`에 있는 약품은 공공 API를 다시 호출하지 않고 건너뛴다. 응답에는 `missingItemSeqs`, `invalidItemSeqs`, `skippedExistingItemSeqs`가 포함되므로 실패/누락 코드만 재시도할 수 있다.
+
 ```json
 {
   "syncKnownMedications": true,

@@ -35,6 +35,47 @@ async function loadActiveSchedules(serviceClient: any, userMedicationId: string)
   return schedules ?? [];
 }
 
+function normalizeCustomName(value?: string): string | null {
+  const trimmed = value?.trim();
+  return trimmed ? trimmed : null;
+}
+
+async function updateCustomNameIfChanged(
+  serviceClient: any,
+  existingMedication: any,
+  customName?: string,
+): Promise<any> {
+  const nextCustomName = normalizeCustomName(customName);
+  if (!nextCustomName) return existingMedication;
+
+  const currentCustomName = typeof existingMedication.custom_name === "string"
+    ? existingMedication.custom_name.trim()
+    : "";
+  if (currentCustomName === nextCustomName) return existingMedication;
+
+  const { data: updatedMedication, error } = await serviceClient
+    .from("user_medications")
+    .update({ custom_name: nextCustomName })
+    .eq("id", existingMedication.id)
+    .select(USER_MEDICATION_SELECT)
+    .single();
+
+  if (error) throw new HttpError(500, "Failed to update existing user medication custom name", error);
+  return updatedMedication;
+}
+
+async function markDetectedMedicationConfirmed(serviceClient: any, detectedMedicationId: string): Promise<void> {
+  const { error } = await serviceClient
+    .from("scan_detected_medications")
+    .update({
+      needs_confirmation: false,
+      match_method: "manual_review",
+    })
+    .eq("id", detectedMedicationId);
+
+  if (error) throw new HttpError(500, "Failed to update detected medication confirmation status", error);
+}
+
 Deno.serve(async (req) => {
   const cors = handleCors(req);
   if (cors) return cors;
@@ -77,17 +118,16 @@ Deno.serve(async (req) => {
 
     if (existingError) throw new HttpError(500, "Failed to check existing user medication", existingError);
     if (existingMedication) {
-      await serviceClient
-        .from("scan_detected_medications")
-        .update({
-          needs_confirmation: false,
-          match_method: "manual_review",
-        })
-        .eq("id", body.detectedMedicationId);
+      const updatedExistingMedication = await updateCustomNameIfChanged(
+        serviceClient,
+        existingMedication,
+        body.customName,
+      );
+      await markDetectedMedicationConfirmed(serviceClient, body.detectedMedicationId);
 
-      const schedules = await loadActiveSchedules(serviceClient, existingMedication.id);
+      const schedules = await loadActiveSchedules(serviceClient, updatedExistingMedication.id);
       return json({
-        userMedication: existingMedication,
+        userMedication: updatedExistingMedication,
         alreadyExists: true,
         schedules,
       });
@@ -99,7 +139,7 @@ Deno.serve(async (req) => {
         user_id: user.id,
         medication_id: detected.medication_id,
         source_scan_id: scanSession.id,
-        custom_name: body.customName ?? detected.matched_name ?? null,
+        custom_name: normalizeCustomName(body.customName) ?? detected.matched_name ?? null,
         start_date: body.startDate ?? new Date().toISOString().slice(0, 10),
         end_date: body.endDate ?? null,
         source: "manual_confirmed",
@@ -122,9 +162,16 @@ Deno.serve(async (req) => {
           throw new HttpError(500, "Failed to load existing user medication after conflict", conflictLoadError);
         }
         if (medicationAfterConflict) {
-          const schedules = await loadActiveSchedules(serviceClient, medicationAfterConflict.id);
+          const updatedConflictMedication = await updateCustomNameIfChanged(
+            serviceClient,
+            medicationAfterConflict,
+            body.customName,
+          );
+          await markDetectedMedicationConfirmed(serviceClient, body.detectedMedicationId);
+
+          const schedules = await loadActiveSchedules(serviceClient, updatedConflictMedication.id);
           return json({
-            userMedication: medicationAfterConflict,
+            userMedication: updatedConflictMedication,
             alreadyExists: true,
             schedules,
           });
@@ -134,13 +181,7 @@ Deno.serve(async (req) => {
       throw new HttpError(500, "Failed to create user medication", insertError);
     }
 
-    await serviceClient
-      .from("scan_detected_medications")
-      .update({
-        needs_confirmation: false,
-        match_method: "manual_review",
-      })
-        .eq("id", body.detectedMedicationId);
+    await markDetectedMedicationConfirmed(serviceClient, body.detectedMedicationId);
 
     return json({ userMedication, alreadyExists: false, schedules: [] }, 201);
   } catch (error) {

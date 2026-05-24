@@ -7,6 +7,9 @@ type RequestBody = {
   pageNo?: number;
   numOfRows?: number;
   itemName?: string;
+  itemSeq?: string | number;
+  itemSeqList?: Array<string | number>;
+  skipExisting?: boolean;
 };
 
 Deno.serve(async (req) => {

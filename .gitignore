@@ -1,0 +1,13 @@
+.env
+.env.*
+!.env.example
+
+.cache_ggshield
+input.xlsx
+
+__pycache__/
+*.pyc
+
+result/*.json
+result/*.jsonl
+result/*.csv

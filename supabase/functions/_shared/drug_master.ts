@@ -183,6 +183,7 @@ async function upsertIngredient(
 
 export async function fetchDrugItems(params: {
   itemName?: string;
+  itemSeq?: string;
   pageNo?: number;
   numOfRows?: number;
   signal?: AbortSignal;
@@ -198,6 +199,10 @@ export async function fetchDrugItems(params: {
 
   if (params.itemName) {
     searchParams.set("item_name", params.itemName);
+  }
+  if (params.itemSeq) {
+    searchParams.set("itemSeq", params.itemSeq);
+    searchParams.set("prdlst_Stdr_code", params.itemSeq);
   }
 
   const response = await fetch(`${endpoint}?${searchParams.toString()}`, {
@@ -231,6 +236,17 @@ export async function fetchDrugItemsByName(itemName: string, options: {
     itemName,
     pageNo: 1,
     numOfRows: options.numOfRows ?? 10,
+    signal: options.signal,
+  });
+}
+
+export async function fetchDrugItemsByItemSeq(itemSeq: string, options: {
+  signal?: AbortSignal;
+} = {}): Promise<DrugApiItem[]> {
+  return await fetchDrugItems({
+    itemSeq,
+    pageNo: 1,
+    numOfRows: 1,
     signal: options.signal,
   });
 }
