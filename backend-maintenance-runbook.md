@@ -70,6 +70,7 @@ DUR known medications batch:
 
 운영자가 삭제 대상 수를 확인하기 전까지 scheduled job은 `dryRun=true`로 둔다.
 
+<<<<<<< HEAD
 운영 스냅샷:
 
 ```json
@@ -80,6 +81,8 @@ DUR known medications batch:
 
 `operation_snapshot`은 `maintenance-runner` 전용 운영 조회 job이다. 실발송/실삭제/동기화는 수행하지 않고 `sync_job_runs`, 약품 수, DUR count, FCM token/delivery count, reminder dry-run, redaction dry-run 결과만 반환한다.
 
+=======
+>>>>>>> 58f1522e29770366581080d0d27ea405733310b9
 ## 3. 운영 확인 SQL
 
 오늘 OCR 호출 수:
@@ -245,6 +248,7 @@ limit 20;
 - 위 “민감정보 삭제 대상” SQL 또는 dry-run 응답에서 삭제 대상 수를 운영자가 확인했다.
 - 삭제 대상이 보존 정책과 맞는다.
 - 첫 실삭제 후 `audit_logs.action = 'redact_expired_sensitive_data'` 기록을 확인한다.
+<<<<<<< HEAD
 
 ## 6. 운영 스냅샷
 
@@ -294,3 +298,5 @@ limit 20;
 - reminder cron은 pg_net 이력에서 15분마다 `200`, `dryRun=true`, `pendingCount=0`으로 동작 중이다.
 - redaction daily cron은 등록되어 있으나 스냅샷 시각 기준 scheduled 실행 시간이 아직 지나지 않았다. 수동 dry-run 결과 삭제 대상은 0건이다.
 - FCM token이 0개이므로 실제 발송 전환 금지 상태다.
+=======
+>>>>>>> 58f1522e29770366581080d0d27ea405733310b9
