@@ -448,27 +448,6 @@ async function runPublicDrugLookup(
   };
 }
 
-  const status: PublicLookupStatus = insertedMedicationCount > 0 && failureCount > 0
-    ? "partial"
-    : insertedMedicationCount > 0
-    ? "succeeded"
-    : failureCount > 0 && successCount === 0
-    ? "failed"
-    : "succeeded";
-
-  return {
-    attempted: true,
-    status,
-    queriedCandidates: lookupCandidates,
-    insertedMedicationCount,
-    message: status === "failed"
-      ? "공공 의약품 API 조회에 실패했습니다."
-      : insertedMedicationCount > 0
-      ? "공공 의약품 API에서 정밀 매칭된 정보를 저장했습니다."
-      : "조회는 완료됐지만 매칭되는 약품을 찾지 못했습니다.",
-    forceConfirmationCandidates,
-  };
-}
 Deno.serve(async (req) => {
   const cors = handleCors(req);
   if (cors) return cors;
