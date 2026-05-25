@@ -1,10 +1,13 @@
 // supabase/functions/_shared/api_preprocessor.ts
 
+import { drugNameSearchTerms } from "./drug_name_parser.ts";
+
 export function generateNgramApiParams(rawText: string, n: number = 2): string[] {
   const compact = rawText.replace(/\s+/g, "").trim();
   if (!compact) return [];
 
   const grams = new Set<string>();
+  const structuredTerms = drugNameSearchTerms(compact);
   const withoutDoseUnit = compact.replace(/(밀리그램|밀리그람|mg|mL|ml)$/i, "");
   const withoutDrugForm = withoutDoseUnit.replace(/(정|캡슐|시럽|액|주|연고|크림|겔|패취|패치|산|과립|점안액|흡입제)$/i, "");
 
@@ -13,6 +16,9 @@ export function generateNgramApiParams(rawText: string, n: number = 2): string[]
   grams.add(compact);
   grams.add(withoutDoseUnit);
   grams.add(withoutDrugForm);
+  for (const term of structuredTerms) {
+    grams.add(term);
+  }
 
   // Korean product names often start with a short manufacturer prefix, e.g.
   // 안국레바미피드정 -> 레바미피드정. Try the tail before falling back to n-grams.

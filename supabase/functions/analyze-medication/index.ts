@@ -1,6 +1,14 @@
 import { handleCors } from "../_shared/cors.ts";
 import { generateNgramApiParams } from "../_shared/api_preprocessor.ts";
 import { calculateWeightedJamoDistance } from "../_shared/jamo_matcher.ts";
+import {
+  drugNameSearchTerms,
+  formCompatible,
+  isCompatibleDrugCore,
+  parseDrugNameParts,
+  strengthCompatible,
+  variantKey,
+} from "../_shared/drug_name_parser.ts";
 import { fetchDrugItemsByName, upsertDrugApiItems } from "../_shared/drug_master.ts";
 import { errorResponse, HttpError, json, readJson } from "../_shared/http.ts";
 import { logApiUsage, requireUser } from "../_shared/supabase.ts";
@@ -56,6 +64,23 @@ type PublicLookupResult = {
   insertedMedicationCount: number;
   message: string;
   forceConfirmationCandidates: Set<string>;
+};
+
+type AlternativeMedicationCandidate = {
+  id: string;
+  item_seq: string | null;
+  item_name: string;
+  entp_name: string | null;
+  edi_code: string | null;
+  search_text: string;
+  similarity_score: number;
+  match_rank: number;
+  match_source?: string;
+};
+
+type MatchLookupResult = {
+  bestByCandidate: Map<string, MedicationCandidateMatch>;
+  alternativesByCandidate: Map<string, AlternativeMedicationCandidate[]>;
 };
 
 type CandidateEntry = {
@@ -409,6 +434,108 @@ function isAcceptableCandidateMatch(match: MedicationCandidateMatch): boolean {
   return isStrongNamePrefix(match.search_text, match.item_name);
 }
 
+function candidateSearchVariants(candidate: string): string[] {
+  return drugNameSearchTerms(candidate);
+}
+
+function toAlternativeCandidate(match: MedicationCandidateMatch): AlternativeMedicationCandidate {
+  return {
+    id: match.id,
+    item_seq: match.item_seq,
+    item_name: match.item_name,
+    entp_name: match.entp_name,
+    edi_code: match.edi_code,
+    search_text: match.search_text,
+    similarity_score: match.similarity_score,
+    match_rank: match.match_rank,
+    match_source: match.match_source,
+  };
+}
+
+function manufacturerCompatible(candidate: string, itemName: string): boolean {
+  const candidateParts = parseDrugNameParts(candidate);
+  const itemParts = parseDrugNameParts(itemName);
+  if (!candidateParts.manufacturerName || !itemParts.manufacturerName) return true;
+  if (candidateParts.manufacturerName === itemParts.manufacturerName) return true;
+  if (candidateParts.manufacturerName.length !== itemParts.manufacturerName.length) return false;
+
+  let differentCharacters = 0;
+  for (let i = 0; i < candidateParts.manufacturerName.length; i += 1) {
+    if (candidateParts.manufacturerName[i] !== itemParts.manufacturerName[i]) {
+      differentCharacters += 1;
+    }
+  }
+  return differentCharacters <= 1;
+}
+
+function isExactMedicationMatch(candidate: string, match: MedicationCandidateMatch): boolean {
+  return match.item_name === candidate ||
+    match.edi_code === candidate ||
+    match.match_source === "exact";
+}
+
+function isStructurallyCompatibleMatch(candidate: string, match: MedicationCandidateMatch): boolean {
+  if (isExactMedicationMatch(candidate, match)) return true;
+  if (["alias", "edi_code", "barcode"].includes(match.match_source ?? "")) return true;
+  if (!manufacturerCompatible(candidate, match.item_name)) return false;
+  if (!isCompatibleDrugCore(candidate, match.item_name)) return false;
+
+  const candidateParts = parseDrugNameParts(candidate);
+  const itemParts = parseDrugNameParts(match.item_name);
+  return formCompatible(candidateParts.form, itemParts.form) &&
+    strengthCompatible(candidateParts.strength, itemParts.strength);
+}
+
+function structuredMatchRank(candidate: string, match: MedicationCandidateMatch): number {
+  const candidateParts = parseDrugNameParts(candidate);
+  const itemParts = parseDrugNameParts(match.item_name);
+  let rank = match.match_rank * 100;
+
+  if (isExactMedicationMatch(candidate, match)) rank -= 1000;
+  if (candidateParts.strength && candidateParts.strength === itemParts.strength) rank -= 120;
+  if (candidateParts.form && formCompatible(candidateParts.form, itemParts.form)) rank -= 60;
+  if (candidateParts.manufacturerName && candidateParts.manufacturerName === itemParts.manufacturerName) rank -= 40;
+  rank -= Math.round((match.similarity_score ?? 0) * 20);
+
+  return rank;
+}
+
+function classifyStructuredMatches(
+  candidate: string,
+  matches: MedicationCandidateMatch[],
+): { best: MedicationCandidateMatch | null; alternatives: MedicationCandidateMatch[] } {
+  const exact = matches.find((match) => isExactMedicationMatch(candidate, match));
+  if (exact) {
+    return { best: exact, alternatives: [] };
+  }
+
+  const compatible = matches
+    .filter((match) => isAcceptableCandidateMatch(match) || isStructurallyCompatibleMatch(candidate, match))
+    .filter((match) => isStructurallyCompatibleMatch(candidate, match))
+    .sort((a, b) =>
+      structuredMatchRank(candidate, a) - structuredMatchRank(candidate, b) ||
+      a.item_name.localeCompare(b.item_name)
+    );
+
+  if (compatible.length === 0) {
+    return { best: null, alternatives: [] };
+  }
+
+  const candidateParts = parseDrugNameParts(candidate);
+  const distinctIds = new Set(compatible.map((match) => match.id));
+  const distinctVariants = new Set(compatible.map((match) => variantKey(match.item_name)));
+  const needsVariantSelection =
+    distinctIds.size > 1 &&
+    distinctVariants.size > 1 &&
+    (!candidateParts.strength || !candidateParts.form);
+
+  if (needsVariantSelection) {
+    return { best: null, alternatives: compatible };
+  }
+
+  return { best: compatible[0], alternatives: [] };
+}
+
 /**
  * 자모 혼동 가중치를 반영하여, OCR 오인식(찐빠) 상황에서도
  * 가장 매칭 확률이 높은 약품을 찾아내기 위한 거리 점수 계산 함수
@@ -435,27 +562,66 @@ export function getBestMatchByJamo(
 async function loadMatches(
   serviceClient: any,
   candidates: string[],
-): Promise<Map<string, MedicationCandidateMatch>> {
-  const { data: matches, error: matchError } = candidates.length > 0
-  ? await serviceClient
-  .rpc("find_medication_candidates_bulk", {
-    search_texts: candidates,
-    max_results: 1,
-  })
+): Promise<MatchLookupResult> {
+  const variantToCandidate = new Map<string, string>();
+  for (const candidate of candidates) {
+    for (const variant of candidateSearchVariants(candidate)) {
+      if (!variantToCandidate.has(variant)) {
+        variantToCandidate.set(variant, candidate);
+      }
+    }
+  }
+
+  const searchTexts = [...variantToCandidate.keys()];
+  const { data: matches, error: matchError } = searchTexts.length > 0
+    ? await serviceClient
+      .rpc("find_medication_candidates_bulk", {
+        search_texts: searchTexts,
+        max_results: 10,
+      })
     : { data: [], error: null };
 
     if (matchError) throw new HttpError(500, "Failed to match medication candidates", matchError);
     
-    const bestByCandidate = new Map<string, MedicationCandidateMatch>();
+    const groupedMatches = new Map<string, MedicationCandidateMatch[]>();
     for (const match of (matches ?? []) as MedicationCandidateMatch[]) {
-      if (!isAcceptableCandidateMatch(match)) {
+      const originalCandidate = variantToCandidate.get(match.search_text) ?? match.search_text;
+      if (!isAcceptableCandidateMatch(match) && !isStructurallyCompatibleMatch(originalCandidate, match)) {
         continue;
       }
-      if (!bestByCandidate.has(match.search_text)) {
-        bestByCandidate.set(match.search_text, match);
+
+      const existing = groupedMatches.get(originalCandidate) ?? [];
+      if (!existing.some((item) => item.id === match.id)) {
+        existing.push(match);
+      }
+      groupedMatches.set(originalCandidate, existing);
+    }
+
+    const bestByCandidate = new Map<string, MedicationCandidateMatch>();
+    const alternativesByCandidate = new Map<string, AlternativeMedicationCandidate[]>();
+
+    for (const [candidate, candidateMatches] of groupedMatches.entries()) {
+      const sortedMatches = candidateMatches.sort((a, b) =>
+        a.match_rank - b.match_rank ||
+        b.similarity_score - a.similarity_score ||
+        a.item_name.localeCompare(b.item_name)
+      );
+
+      const structured = classifyStructuredMatches(candidate, sortedMatches);
+      if (structured.alternatives.length > 0) {
+        alternativesByCandidate.set(candidate, structured.alternatives.map(toAlternativeCandidate));
+        continue;
+      }
+
+      if (structured.best) {
+        bestByCandidate.set(candidate, structured.best);
       }
     }
-    return bestByCandidate;
+
+    return {
+      bestByCandidate,
+      alternativesByCandidate,
+    };
   }
   
 // =============================== LEGACY ===============================
@@ -666,7 +832,9 @@ Deno.serve(async (req) => {
     
     const detectedRows = [];
     const unmatchedCandidates: string[] = [];
-    let bestByCandidate = await loadMatches(serviceClient, candidates);
+    let matchLookup = await loadMatches(serviceClient, candidates);
+    let bestByCandidate = matchLookup.bestByCandidate;
+    let alternativesByCandidate = matchLookup.alternativesByCandidate;
 
     //===
     const publicLookup = await runPublicDrugLookup(
@@ -677,7 +845,11 @@ Deno.serve(async (req) => {
     );
     if (publicLookup.insertedMedicationCount > 0) {
       const refreshedMatches = await loadMatches(serviceClient, candidates);
-      bestByCandidate = new Map([...refreshedMatches, ...bestByCandidate]);
+      bestByCandidate = new Map([...refreshedMatches.bestByCandidate, ...bestByCandidate]);
+      alternativesByCandidate = new Map([
+        ...alternativesByCandidate,
+        ...refreshedMatches.alternativesByCandidate,
+      ]);
     }
     if (publicLookup.attempted) {
       await logApiUsage(serviceClient, {
@@ -691,13 +863,14 @@ Deno.serve(async (req) => {
 
     for (const candidate of candidates) {
       const rawBest = bestByCandidate.get(candidate);
+      const alternativeCandidates = alternativesByCandidate.get(candidate) ?? [];
       const rawConfidence = rawBest?.similarity_score ?? 0;
       const rawIsExact = rawBest?.item_name === candidate || rawBest?.edi_code === candidate || rawBest?.match_source === "exact";
       const best = rawBest && (
         rawIsExact ||
         rawConfidence >= 0.65 ||
         ["alias", "edi_code", "barcode"].includes(rawBest.match_source ?? "") ||
-        isStrongNamePrefix(candidate, rawBest.item_name)
+        isStructurallyCompatibleMatch(candidate, rawBest)
       )
         ? rawBest
         : undefined;
@@ -705,24 +878,29 @@ Deno.serve(async (req) => {
       const isExact = best?.item_name === candidate || best?.edi_code === candidate || best?.match_source === "exact";
       const matchSource = best?.match_source ?? (isExact ? "exact" : best ? "fuzzy" : "none");
       const forcePublicConfirmation = publicLookup.forceConfirmationCandidates.has(candidate);
+      const needsAlternativeConfirmation = alternativeCandidates.length > 0;
+      const displayConfidence = confidence || alternativeCandidates[0]?.similarity_score || 0;
+      const effectiveMatchSource = needsAlternativeConfirmation ? "fuzzy" : matchSource;
       const needsBrandConfirmation = Boolean(best) &&
         (forcePublicConfirmation || (best?.alias_requires_confirmation ?? (!isExact && isBroadLatinBrand(candidate))));
-      const quality = needsBrandConfirmation || forcePublicConfirmation
+      const quality = needsAlternativeConfirmation || needsBrandConfirmation || forcePublicConfirmation
         ? "medium"
         : matchQuality(isExact ? 1 : confidence, Boolean(best));
-      if (!best) unmatchedCandidates.push(candidate);
+      if (!best && !needsAlternativeConfirmation) unmatchedCandidates.push(candidate);
 
-      if (best || candidate.length >= 3) {
+      if (best || needsAlternativeConfirmation || candidate.length >= 3) {
         detectedRows.push({
           scan_id: scan.id,
           medication_id: best?.id ?? null,
           detected_name: candidate,
           matched_name: best?.item_name ?? null,
-          confidence: isExact ? 1 : Math.min(Math.max(confidence, 0), 0.99),
-          match_method: matchSource,
+          confidence: isExact ? 1 : Math.min(Math.max(displayConfidence, 0), 0.99),
+          match_method: effectiveMatchSource,
           match_quality: quality,
-          needs_confirmation: forcePublicConfirmation || needsBrandConfirmation || (!isExact && confidence < 0.82),
-          warning_message: !best
+          needs_confirmation: needsAlternativeConfirmation || forcePublicConfirmation || needsBrandConfirmation || (!isExact && confidence < 0.82),
+          warning_message: needsAlternativeConfirmation
+            ? "여러 의약품 후보가 확인되었습니다. 함량과 제형을 사용자가 확인해야 합니다."
+            : !best
             ? "공식 의약품 DB에서 확실한 매칭을 찾지 못했습니다. 약사 또는 의사에게 확인하세요."
             : forcePublicConfirmation
             ? "공공 의약품 DB에서 여러 후보가 확인되었습니다. 사용자가 세부 제품명, 함량, 제형을 확인해야 합니다."
@@ -757,6 +935,10 @@ Deno.serve(async (req) => {
       : { data: [], error: null };
 
     if (enrichedError) throw new HttpError(500, "Failed to load detected medication details", enrichedError);
+    const enrichedDetectedWithAlternatives = (enrichedDetected ?? []).map((row: any) => ({
+      ...row,
+      alternativeCandidates: alternativesByCandidate.get(row.detected_name) ?? [],
+    }));
 
     await serviceClient
       .from("scan_sessions")
@@ -771,12 +953,13 @@ Deno.serve(async (req) => {
       detectedRows,
       unmatchedCount: unmatchedCandidates.length,
     });
-    const informationAvailability = summarizeInformationAvailability((enrichedDetected ?? []) as DetectedMedicationRow[]);
+    const informationAvailability = summarizeInformationAvailability(enrichedDetectedWithAlternatives as DetectedMedicationRow[]);
 
     return json({
       scanId: scan.id,
       candidates,
-      detectedMedications: enrichedDetected ?? [],
+      detectedMedications: enrichedDetectedWithAlternatives,
+      alternativeMedicationCandidates: Object.fromEntries(alternativesByCandidate),
       resultMode,
       matchQuality: inserted?.some((row) => row.match_quality === "high")
         ? "high"
