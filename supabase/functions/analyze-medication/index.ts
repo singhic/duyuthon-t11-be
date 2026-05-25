@@ -1,5 +1,5 @@
 import { handleCors } from "../_shared/cors.ts";
-import { generateNgramApiParams } from "../_shared/api_preprocessor.ts";
+import { generateNgramApiParams, generateOcrCorrectionVariants } from "../_shared/api_preprocessor.ts";
 import { calculateWeightedJamoDistance } from "../_shared/jamo_matcher.ts";
 import { fetchDrugItemsByName, upsertDrugApiItems } from "../_shared/drug_master.ts";
 import { errorResponse, HttpError, json, readJson } from "../_shared/http.ts";
@@ -56,6 +56,23 @@ type PublicLookupResult = {
   insertedMedicationCount: number;
   message: string;
   forceConfirmationCandidates: Set<string>;
+};
+
+type AlternativeMedicationCandidate = {
+  id: string;
+  item_seq: string | null;
+  item_name: string;
+  entp_name: string | null;
+  edi_code: string | null;
+  search_text: string;
+  similarity_score: number;
+  match_rank: number;
+  match_source?: string;
+};
+
+type MatchLookupResult = {
+  bestByCandidate: Map<string, MedicationCandidateMatch>;
+  alternativesByCandidate: Map<string, AlternativeMedicationCandidate[]>;
 };
 
 type CandidateEntry = {
@@ -409,6 +426,41 @@ function isAcceptableCandidateMatch(match: MedicationCandidateMatch): boolean {
   return isStrongNamePrefix(match.search_text, match.item_name);
 }
 
+function candidateSearchVariants(candidate: string): string[] {
+  return [
+    candidate,
+    ...generateOcrCorrectionVariants(candidate),
+  ].map((variant) => variant.trim()).filter(Boolean);
+}
+
+function toAlternativeCandidate(match: MedicationCandidateMatch): AlternativeMedicationCandidate {
+  return {
+    id: match.id,
+    item_seq: match.item_seq,
+    item_name: match.item_name,
+    entp_name: match.entp_name,
+    edi_code: match.edi_code,
+    search_text: match.search_text,
+    similarity_score: match.similarity_score,
+    match_rank: match.match_rank,
+    match_source: match.match_source,
+  };
+}
+
+function getAmbiguousPrefixMatches(
+  originalCandidate: string,
+  matches: MedicationCandidateMatch[],
+): MedicationCandidateMatch[] {
+  if (DRUG_FORM_ENDING.test(compactText(originalCandidate))) return [];
+
+  const prefixMatches = matches.filter((match) =>
+    match.match_source === "fuzzy" &&
+    isStrongNamePrefix(match.search_text, match.item_name)
+  );
+  const distinctIds = new Set(prefixMatches.map((match) => match.id));
+  return distinctIds.size > 1 ? prefixMatches : [];
+}
+
 /**
  * 자모 혼동 가중치를 반영하여, OCR 오인식(찐빠) 상황에서도
  * 가장 매칭 확률이 높은 약품을 찾아내기 위한 거리 점수 계산 함수
@@ -435,27 +487,64 @@ export function getBestMatchByJamo(
 async function loadMatches(
   serviceClient: any,
   candidates: string[],
-): Promise<Map<string, MedicationCandidateMatch>> {
-  const { data: matches, error: matchError } = candidates.length > 0
-  ? await serviceClient
-  .rpc("find_medication_candidates_bulk", {
-    search_texts: candidates,
-    max_results: 1,
-  })
+): Promise<MatchLookupResult> {
+  const variantToCandidate = new Map<string, string>();
+  for (const candidate of candidates) {
+    for (const variant of candidateSearchVariants(candidate)) {
+      if (!variantToCandidate.has(variant)) {
+        variantToCandidate.set(variant, candidate);
+      }
+    }
+  }
+
+  const searchTexts = [...variantToCandidate.keys()];
+  const { data: matches, error: matchError } = searchTexts.length > 0
+    ? await serviceClient
+      .rpc("find_medication_candidates_bulk", {
+        search_texts: searchTexts,
+        max_results: 5,
+      })
     : { data: [], error: null };
 
     if (matchError) throw new HttpError(500, "Failed to match medication candidates", matchError);
     
-    const bestByCandidate = new Map<string, MedicationCandidateMatch>();
+    const groupedMatches = new Map<string, MedicationCandidateMatch[]>();
     for (const match of (matches ?? []) as MedicationCandidateMatch[]) {
       if (!isAcceptableCandidateMatch(match)) {
         continue;
       }
-      if (!bestByCandidate.has(match.search_text)) {
-        bestByCandidate.set(match.search_text, match);
+
+      const originalCandidate = variantToCandidate.get(match.search_text) ?? match.search_text;
+      const existing = groupedMatches.get(originalCandidate) ?? [];
+      if (!existing.some((item) => item.id === match.id)) {
+        existing.push(match);
       }
+      groupedMatches.set(originalCandidate, existing);
     }
-    return bestByCandidate;
+
+    const bestByCandidate = new Map<string, MedicationCandidateMatch>();
+    const alternativesByCandidate = new Map<string, AlternativeMedicationCandidate[]>();
+
+    for (const [candidate, candidateMatches] of groupedMatches.entries()) {
+      const sortedMatches = candidateMatches.sort((a, b) =>
+        a.match_rank - b.match_rank ||
+        b.similarity_score - a.similarity_score ||
+        a.item_name.localeCompare(b.item_name)
+      );
+
+      const ambiguousPrefixMatches = getAmbiguousPrefixMatches(candidate, sortedMatches);
+      if (ambiguousPrefixMatches.length > 0) {
+        alternativesByCandidate.set(candidate, ambiguousPrefixMatches.map(toAlternativeCandidate));
+        continue;
+      }
+
+      bestByCandidate.set(candidate, sortedMatches[0]);
+    }
+
+    return {
+      bestByCandidate,
+      alternativesByCandidate,
+    };
   }
   
 // =============================== LEGACY ===============================
@@ -666,7 +755,9 @@ Deno.serve(async (req) => {
     
     const detectedRows = [];
     const unmatchedCandidates: string[] = [];
-    let bestByCandidate = await loadMatches(serviceClient, candidates);
+    let matchLookup = await loadMatches(serviceClient, candidates);
+    let bestByCandidate = matchLookup.bestByCandidate;
+    let alternativesByCandidate = matchLookup.alternativesByCandidate;
 
     //===
     const publicLookup = await runPublicDrugLookup(
@@ -677,7 +768,11 @@ Deno.serve(async (req) => {
     );
     if (publicLookup.insertedMedicationCount > 0) {
       const refreshedMatches = await loadMatches(serviceClient, candidates);
-      bestByCandidate = new Map([...refreshedMatches, ...bestByCandidate]);
+      bestByCandidate = new Map([...refreshedMatches.bestByCandidate, ...bestByCandidate]);
+      alternativesByCandidate = new Map([
+        ...alternativesByCandidate,
+        ...refreshedMatches.alternativesByCandidate,
+      ]);
     }
     if (publicLookup.attempted) {
       await logApiUsage(serviceClient, {
@@ -691,6 +786,7 @@ Deno.serve(async (req) => {
 
     for (const candidate of candidates) {
       const rawBest = bestByCandidate.get(candidate);
+      const alternativeCandidates = alternativesByCandidate.get(candidate) ?? [];
       const rawConfidence = rawBest?.similarity_score ?? 0;
       const rawIsExact = rawBest?.item_name === candidate || rawBest?.edi_code === candidate || rawBest?.match_source === "exact";
       const best = rawBest && (
@@ -705,24 +801,29 @@ Deno.serve(async (req) => {
       const isExact = best?.item_name === candidate || best?.edi_code === candidate || best?.match_source === "exact";
       const matchSource = best?.match_source ?? (isExact ? "exact" : best ? "fuzzy" : "none");
       const forcePublicConfirmation = publicLookup.forceConfirmationCandidates.has(candidate);
+      const needsAlternativeConfirmation = alternativeCandidates.length > 0;
+      const displayConfidence = confidence || alternativeCandidates[0]?.similarity_score || 0;
+      const effectiveMatchSource = needsAlternativeConfirmation ? "fuzzy" : matchSource;
       const needsBrandConfirmation = Boolean(best) &&
         (forcePublicConfirmation || (best?.alias_requires_confirmation ?? (!isExact && isBroadLatinBrand(candidate))));
-      const quality = needsBrandConfirmation || forcePublicConfirmation
+      const quality = needsAlternativeConfirmation || needsBrandConfirmation || forcePublicConfirmation
         ? "medium"
         : matchQuality(isExact ? 1 : confidence, Boolean(best));
-      if (!best) unmatchedCandidates.push(candidate);
+      if (!best && !needsAlternativeConfirmation) unmatchedCandidates.push(candidate);
 
-      if (best || candidate.length >= 3) {
+      if (best || needsAlternativeConfirmation || candidate.length >= 3) {
         detectedRows.push({
           scan_id: scan.id,
           medication_id: best?.id ?? null,
           detected_name: candidate,
           matched_name: best?.item_name ?? null,
-          confidence: isExact ? 1 : Math.min(Math.max(confidence, 0), 0.99),
-          match_method: matchSource,
+          confidence: isExact ? 1 : Math.min(Math.max(displayConfidence, 0), 0.99),
+          match_method: effectiveMatchSource,
           match_quality: quality,
-          needs_confirmation: forcePublicConfirmation || needsBrandConfirmation || (!isExact && confidence < 0.82),
-          warning_message: !best
+          needs_confirmation: needsAlternativeConfirmation || forcePublicConfirmation || needsBrandConfirmation || (!isExact && confidence < 0.82),
+          warning_message: needsAlternativeConfirmation
+            ? "여러 의약품 후보가 확인되었습니다. 함량과 제형을 사용자가 확인해야 합니다."
+            : !best
             ? "공식 의약품 DB에서 확실한 매칭을 찾지 못했습니다. 약사 또는 의사에게 확인하세요."
             : forcePublicConfirmation
             ? "공공 의약품 DB에서 여러 후보가 확인되었습니다. 사용자가 세부 제품명, 함량, 제형을 확인해야 합니다."
@@ -757,6 +858,10 @@ Deno.serve(async (req) => {
       : { data: [], error: null };
 
     if (enrichedError) throw new HttpError(500, "Failed to load detected medication details", enrichedError);
+    const enrichedDetectedWithAlternatives = (enrichedDetected ?? []).map((row: any) => ({
+      ...row,
+      alternativeCandidates: alternativesByCandidate.get(row.detected_name) ?? [],
+    }));
 
     await serviceClient
       .from("scan_sessions")
@@ -771,12 +876,13 @@ Deno.serve(async (req) => {
       detectedRows,
       unmatchedCount: unmatchedCandidates.length,
     });
-    const informationAvailability = summarizeInformationAvailability((enrichedDetected ?? []) as DetectedMedicationRow[]);
+    const informationAvailability = summarizeInformationAvailability(enrichedDetectedWithAlternatives as DetectedMedicationRow[]);
 
     return json({
       scanId: scan.id,
       candidates,
-      detectedMedications: enrichedDetected ?? [],
+      detectedMedications: enrichedDetectedWithAlternatives,
+      alternativeMedicationCandidates: Object.fromEntries(alternativesByCandidate),
       resultMode,
       matchQuality: inserted?.some((row) => row.match_quality === "high")
         ? "high"
