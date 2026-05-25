@@ -1,6 +1,14 @@
 import { handleCors } from "../_shared/cors.ts";
-import { generateNgramApiParams, generateOcrCorrectionVariants } from "../_shared/api_preprocessor.ts";
+import { generateNgramApiParams } from "../_shared/api_preprocessor.ts";
 import { calculateWeightedJamoDistance } from "../_shared/jamo_matcher.ts";
+import {
+  drugNameSearchTerms,
+  formCompatible,
+  isCompatibleDrugCore,
+  parseDrugNameParts,
+  strengthCompatible,
+  variantKey,
+} from "../_shared/drug_name_parser.ts";
 import { fetchDrugItemsByName, upsertDrugApiItems } from "../_shared/drug_master.ts";
 import { errorResponse, HttpError, json, readJson } from "../_shared/http.ts";
 import { logApiUsage, requireUser } from "../_shared/supabase.ts";
@@ -427,10 +435,7 @@ function isAcceptableCandidateMatch(match: MedicationCandidateMatch): boolean {
 }
 
 function candidateSearchVariants(candidate: string): string[] {
-  return [
-    candidate,
-    ...generateOcrCorrectionVariants(candidate),
-  ].map((variant) => variant.trim()).filter(Boolean);
+  return drugNameSearchTerms(candidate);
 }
 
 function toAlternativeCandidate(match: MedicationCandidateMatch): AlternativeMedicationCandidate {
@@ -447,18 +452,88 @@ function toAlternativeCandidate(match: MedicationCandidateMatch): AlternativeMed
   };
 }
 
-function getAmbiguousPrefixMatches(
-  originalCandidate: string,
-  matches: MedicationCandidateMatch[],
-): MedicationCandidateMatch[] {
-  if (DRUG_FORM_ENDING.test(compactText(originalCandidate))) return [];
+function manufacturerCompatible(candidate: string, itemName: string): boolean {
+  const candidateParts = parseDrugNameParts(candidate);
+  const itemParts = parseDrugNameParts(itemName);
+  if (!candidateParts.manufacturerName || !itemParts.manufacturerName) return true;
+  if (candidateParts.manufacturerName === itemParts.manufacturerName) return true;
+  if (candidateParts.manufacturerName.length !== itemParts.manufacturerName.length) return false;
 
-  const prefixMatches = matches.filter((match) =>
-    match.match_source === "fuzzy" &&
-    isStrongNamePrefix(match.search_text, match.item_name)
-  );
-  const distinctIds = new Set(prefixMatches.map((match) => match.id));
-  return distinctIds.size > 1 ? prefixMatches : [];
+  let differentCharacters = 0;
+  for (let i = 0; i < candidateParts.manufacturerName.length; i += 1) {
+    if (candidateParts.manufacturerName[i] !== itemParts.manufacturerName[i]) {
+      differentCharacters += 1;
+    }
+  }
+  return differentCharacters <= 1;
+}
+
+function isExactMedicationMatch(candidate: string, match: MedicationCandidateMatch): boolean {
+  return match.item_name === candidate ||
+    match.edi_code === candidate ||
+    match.match_source === "exact";
+}
+
+function isStructurallyCompatibleMatch(candidate: string, match: MedicationCandidateMatch): boolean {
+  if (isExactMedicationMatch(candidate, match)) return true;
+  if (["alias", "edi_code", "barcode"].includes(match.match_source ?? "")) return true;
+  if (!manufacturerCompatible(candidate, match.item_name)) return false;
+  if (!isCompatibleDrugCore(candidate, match.item_name)) return false;
+
+  const candidateParts = parseDrugNameParts(candidate);
+  const itemParts = parseDrugNameParts(match.item_name);
+  return formCompatible(candidateParts.form, itemParts.form) &&
+    strengthCompatible(candidateParts.strength, itemParts.strength);
+}
+
+function structuredMatchRank(candidate: string, match: MedicationCandidateMatch): number {
+  const candidateParts = parseDrugNameParts(candidate);
+  const itemParts = parseDrugNameParts(match.item_name);
+  let rank = match.match_rank * 100;
+
+  if (isExactMedicationMatch(candidate, match)) rank -= 1000;
+  if (candidateParts.strength && candidateParts.strength === itemParts.strength) rank -= 120;
+  if (candidateParts.form && formCompatible(candidateParts.form, itemParts.form)) rank -= 60;
+  if (candidateParts.manufacturerName && candidateParts.manufacturerName === itemParts.manufacturerName) rank -= 40;
+  rank -= Math.round((match.similarity_score ?? 0) * 20);
+
+  return rank;
+}
+
+function classifyStructuredMatches(
+  candidate: string,
+  matches: MedicationCandidateMatch[],
+): { best: MedicationCandidateMatch | null; alternatives: MedicationCandidateMatch[] } {
+  const exact = matches.find((match) => isExactMedicationMatch(candidate, match));
+  if (exact) {
+    return { best: exact, alternatives: [] };
+  }
+
+  const compatible = matches
+    .filter((match) => isAcceptableCandidateMatch(match) || isStructurallyCompatibleMatch(candidate, match))
+    .filter((match) => isStructurallyCompatibleMatch(candidate, match))
+    .sort((a, b) =>
+      structuredMatchRank(candidate, a) - structuredMatchRank(candidate, b) ||
+      a.item_name.localeCompare(b.item_name)
+    );
+
+  if (compatible.length === 0) {
+    return { best: null, alternatives: [] };
+  }
+
+  const candidateParts = parseDrugNameParts(candidate);
+  const distinctIds = new Set(compatible.map((match) => match.id));
+  const distinctVariants = new Set(compatible.map((match) => variantKey(match.item_name)));
+  const needsVariantSelection =
+    distinctIds.size > 1 &&
+    distinctVariants.size > 1 &&
+    (!candidateParts.strength || !candidateParts.form);
+
+  if (needsVariantSelection) {
+    return { best: null, alternatives: compatible };
+  }
+
+  return { best: compatible[0], alternatives: [] };
 }
 
 /**
@@ -502,7 +577,7 @@ async function loadMatches(
     ? await serviceClient
       .rpc("find_medication_candidates_bulk", {
         search_texts: searchTexts,
-        max_results: 5,
+        max_results: 10,
       })
     : { data: [], error: null };
 
@@ -510,11 +585,11 @@ async function loadMatches(
     
     const groupedMatches = new Map<string, MedicationCandidateMatch[]>();
     for (const match of (matches ?? []) as MedicationCandidateMatch[]) {
-      if (!isAcceptableCandidateMatch(match)) {
+      const originalCandidate = variantToCandidate.get(match.search_text) ?? match.search_text;
+      if (!isAcceptableCandidateMatch(match) && !isStructurallyCompatibleMatch(originalCandidate, match)) {
         continue;
       }
 
-      const originalCandidate = variantToCandidate.get(match.search_text) ?? match.search_text;
       const existing = groupedMatches.get(originalCandidate) ?? [];
       if (!existing.some((item) => item.id === match.id)) {
         existing.push(match);
@@ -532,13 +607,15 @@ async function loadMatches(
         a.item_name.localeCompare(b.item_name)
       );
 
-      const ambiguousPrefixMatches = getAmbiguousPrefixMatches(candidate, sortedMatches);
-      if (ambiguousPrefixMatches.length > 0) {
-        alternativesByCandidate.set(candidate, ambiguousPrefixMatches.map(toAlternativeCandidate));
+      const structured = classifyStructuredMatches(candidate, sortedMatches);
+      if (structured.alternatives.length > 0) {
+        alternativesByCandidate.set(candidate, structured.alternatives.map(toAlternativeCandidate));
         continue;
       }
 
-      bestByCandidate.set(candidate, sortedMatches[0]);
+      if (structured.best) {
+        bestByCandidate.set(candidate, structured.best);
+      }
     }
 
     return {
@@ -793,7 +870,7 @@ Deno.serve(async (req) => {
         rawIsExact ||
         rawConfidence >= 0.65 ||
         ["alias", "edi_code", "barcode"].includes(rawBest.match_source ?? "") ||
-        isStrongNamePrefix(candidate, rawBest.item_name)
+        isStructurallyCompatibleMatch(candidate, rawBest)
       )
         ? rawBest
         : undefined;
