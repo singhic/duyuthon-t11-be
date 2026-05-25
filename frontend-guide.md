@@ -171,9 +171,7 @@ export async function ensureUserProfile() {
     .insert({
       user_id: user.id,
       display_name:
-        user.user_metadata?.full_name ??
-        user.user_metadata?.name ??
-        "사용자",
+        user.user_metadata?.full_name ?? user.user_metadata?.name ?? "사용자",
       role: "patient",
       accessibility_preference: {},
     })
@@ -219,25 +217,23 @@ export async function ensureUserProfile() {
 - `overallSeverity = "no_registered_warning"`을 “안전함”으로 표시
 - Gemini 응답의 `disclaimer` 제거
 - 같은 약을 active 복용약으로 직접 중복 insert
-- [x]  사진 기반 OCR 분석 플로우는 다음 순서다.
-    
-    ```
-    1. 로그인 확인
-    2. scanId 생성
-    3. Storage prescription-temp 버킷에 이미지 업로드
-    4. scan_sessions row 생성
-    5. google-ocr Edge Function 호출
-    6. analyze-medication Edge Function 호출
-    7. 사용자가 후보 약품 확인
-    8. confirm-medication Edge Function 호출
-    9. 필요 시 delete-scan-image Edge Function 호출
-    ```
-    
+- [x] 사진 기반 OCR 분석 플로우는 다음 순서다.
+  ```
+  1. 로그인 확인
+  2. scanId 생성
+  3. Storage prescription-temp 버킷에 이미지 업로드
+  4. scan_sessions row 생성
+  5. google-ocr Edge Function 호출
+  6. analyze-medication Edge Function 호출
+  7. 사용자가 후보 약품 확인
+  8. confirm-medication Edge Function 호출
+  9. 필요 시 delete-scan-image Edge Function 호출
+  ```
 
 이미지 보관 정책:
 
 - OCR 성공 시 백엔드가 원본 이미지를 즉시 삭제하고 `scan_sessions.image_path`를 비운다.
-- [x]  앱 종료, 네트워크 장애, 화면 이탈 등으로 즉시 삭제 호출이 누락되어도 만료된 scan session의 남은 원본 이미지는 백엔드 redaction job이 TTL 기준으로 정리한다.
+- [x] 앱 종료, 네트워크 장애, 화면 이탈 등으로 즉시 삭제 호출이 누락되어도 만료된 scan session의 남은 원본 이미지는 백엔드 redaction job이 TTL 기준으로 정리한다.
 - 기본 TTL은 `scan_sessions.expires_at` 기준이며 현재 생성 후 30일이다.
 - TTL cleanup은 scan session row 자체를 삭제하지 않고 Storage object 삭제 후 `image_path=null`, `image_deleted_at` 기록만 남긴다.
 
@@ -319,14 +315,12 @@ export async function uploadPrescriptionImage(file: File) {
 
   if (uploadError) throw uploadError;
 
-  const { error: scanError } = await supabase
-    .from("scan_sessions")
-    .insert({
-      id: scanId,
-      user_id: user.id,
-      image_path: imagePath,
-      status: "uploaded",
-    });
+  const { error: scanError } = await supabase.from("scan_sessions").insert({
+    id: scanId,
+    user_id: user.id,
+    image_path: imagePath,
+    status: "uploaded",
+  });
 
   if (scanError) throw scanError;
 
@@ -374,7 +368,12 @@ type GoogleOcrResponse = {
   confidence: number | null;
   imageDeleted: boolean;
   needsManualReview: boolean;
-  failureReason: "empty_ocr_text" | "low_ocr_confidence" | "ocr_request_failed" | "unsupported_image_type" | null;
+  failureReason:
+    | "empty_ocr_text"
+    | "low_ocr_confidence"
+    | "ocr_request_failed"
+    | "unsupported_image_type"
+    | null;
   recommendedAction: string;
   pharmacyContact: {
     name: string | null;
@@ -474,9 +473,7 @@ UI 분기:
 - `failureReason = "low_ocr_confidence"`: 인식 텍스트는 보여주되 약품 등록 전 사용자 확인을 강제한다.
 - `failureReason = "empty_ocr_text"`: 재촬영 안내를 우선 표시한다.
 - `failureReason = "unsupported_image_type"`: 프론트 변환 또는 재업로드 안내를 표시한다.
-    
-    -png,jpg,webp,heic 모두 대응해둬서 그냥 재촬영으로 돌려보냄.
-    
+  -png,jpg,webp,heic 모두 대응해둬서 그냥 재촬영으로 돌려보냄.
 - `pharmacyContact`가 있으면 OCR 실패/저신뢰도 화면에서 처방 약국 연락처로 보여줄 수 있다.
 
 ## 8. 약품 분석 호출
@@ -509,7 +506,14 @@ type AnalyzeMedicationResponse = {
     matched_name: string | null;
     confidence: number;
     match_quality: "high" | "medium" | "low" | "none" | "unknown";
-    match_method: "exact" | "fuzzy" | "alias" | "edi_code" | "barcode" | "manual_review" | "none";
+    match_method:
+      | "exact"
+      | "fuzzy"
+      | "alias"
+      | "edi_code"
+      | "barcode"
+      | "manual_review"
+      | "none";
     dosage_instruction: Record<string, unknown>;
     warning_message: string | null;
     needs_confirmation: boolean;
@@ -540,7 +544,12 @@ type AnalyzeMedicationResponse = {
   };
   publicLookup: {
     attempted: boolean;
-    status: "not_needed" | "succeeded" | "partial" | "failed" | "skipped_low_confidence";
+    status:
+      | "not_needed"
+      | "succeeded"
+      | "partial"
+      | "failed"
+      | "skipped_low_confidence";
     queriedCandidates: string[];
     insertedMedicationCount: number;
     message: string;
@@ -551,9 +560,12 @@ type AnalyzeMedicationResponse = {
 
 ```tsx
 export async function analyzeMedication(scanId: string) {
-  const { data, error } = await supabase.functions.invoke("analyze-medication", {
-    body: { scanId },
-  });
+  const { data, error } = await supabase.functions.invoke(
+    "analyze-medication",
+    {
+      body: { scanId },
+    },
+  );
 
   if (error) throw error;
   return data as {
@@ -603,7 +615,12 @@ export async function analyzeMedication(scanId: string) {
     };
     publicLookup: {
       attempted: boolean;
-      status: "not_needed" | "succeeded" | "partial" | "failed" | "skipped_low_confidence";
+      status:
+        | "not_needed"
+        | "succeeded"
+        | "partial"
+        | "failed"
+        | "skipped_low_confidence";
       queriedCandidates: string[];
       insertedMedicationCount: number;
       message: string;
@@ -678,16 +695,16 @@ export async function analyzeMedication(scanId: string) {
 UI 표시 원칙:
 
 - `resultMode = "ready"`이고 `autoDisplayReady = true`이면 약품 정보 화면을 바로 보여줄 수 있다. 단, 현재 복용약 등록은 사용자 확인 후에만 한다.
-    - medicine_info로
+  - medicine_info로
 - `resultMode = "review_required"`이면 후보는 보여주되 자동 등록을 막고 재촬영/사용자 확인을 안내한다.
-    - candidates로 갔다가 medicine_info로. candidates에서는 후보군들이랑 재촬영 버튼 리스트업
+  - candidates로 갔다가 medicine_info로. candidates에서는 후보군들이랑 재촬영 버튼 리스트업
 - `resultMode = "no_candidates"`이면 약품명을 찾지 못한 상태이므로 재촬영 또는 약국/의료진 확인을 안내한다.
-    - 재촬영으로, 안내 문구 필요
+  - 재촬영으로, 안내 문구 필요
 - `needs_confirmation = true`이면 사용자가 반드시 확인해야 한다.
-    - candidates로
+  - candidates로
 - `needsUserConfirmation = true`이면 화면 전체에서 “확인 필요” 상태를 표시한다.
 - `confidence`가 낮으면 “인식이 확실하지 않아요”를 표시한다.
-    - 기준 0.95
+  - 기준 0.95
 - `match_quality = "none"` 또는 `unmatchedCandidates`가 있으면 자동 등록을 막는다.
 - `warning_message`가 있으면 그대로 사용자에게 보여준다.
 - `medications`가 있으면 효능/복용법/주의사항/보관법을 이 객체에서 표시한다. 값이 `null`이면 프론트에서 추측 문구를 만들지 않는다.
@@ -741,7 +758,7 @@ type ConfirmMedicationResponse = {
     active: boolean;
     created_at: string;
     updated_at: string;
-	  medications?: {
+    medications?: {
       id: string;
       item_name: string;
       entp_name: string | null;
@@ -765,9 +782,12 @@ export async function confirmMedication(params: {
   endDate?: string;
   customName?: string;
 }) {
-  const { data, error } = await supabase.functions.invoke("confirm-medication", {
-    body: params,
-  });
+  const { data, error } = await supabase.functions.invoke(
+    "confirm-medication",
+    {
+      body: params,
+    },
+  );
 
   if (error) throw error;
   return data as {
@@ -781,7 +801,7 @@ export async function confirmMedication(params: {
       end_date: string | null;
       source: string;
       active: boolean;
-	    medications?: {
+      medications?: {
         id: string;
         item_name: string;
         entp_name: string | null;
@@ -816,7 +836,7 @@ await confirmMedication({
 
 기존 복용약 이름 수정 모드에서는 `userMedicationId`로 현재 로그인 사용자의 `user_medications` row를 찾고, `custom_name`만 업데이트한다. 해당 row가 현재 사용자 소유가 아니거나 없으면 `404`가 반환된다.
 
-복용약 제거는 `confirm-medication`에서 처리하지 않는다. 현재 복용약 목록에서 약을 제거하려면 `user-medications`의 `DELETE` 메서드를 사용한다.
+잘못 추가한 복용약 1개를 현재 복용약 목록에서 제거하는 작업은 `confirm-medication`에서 처리하지 않는다. 이 경우 `user_medications.id`를 사용해 `user-medications`의 `DELETE` 메서드를 호출한다.
 
 에러 처리:
 
@@ -899,7 +919,7 @@ export async function listUserMedications(params?: {
 
 기본 조회는 `active=true`인 현재 복용약만 반환한다. 과거 제거 이력까지 필요할 때만 `active=all`을 사용한다.
 
-### 9.1.1 현재 복용약 제거
+### 9.1.1 잘못 추가한 복용약 1개 제거
 
 Request Body:
 
@@ -944,8 +964,8 @@ export async function removeUserMedication(userMedicationId: string) {
 
 동작:
 
-- `user_medications.active=false`, `end_date=서버 기준 오늘(Asia/Seoul)`로 변경한다.
-- 해당 약의 active 일정은 모두 `active=false`, `notification_enabled=false`, `end_date=오늘`로 변경한다.
+- 선택한 `user_medications` row 1개를 `active=false`, `end_date=서버 기준 오늘(Asia/Seoul)`로 변경한다.
+- 해당 복용약에 연결된 active 일정은 모두 `active=false`, `notification_enabled=false`, `end_date=오늘`로 변경한다.
 - 아직 발송되지 않은 pending 복약 알림 delivery는 `skipped` 처리한다.
 - 이미 제거된 약을 다시 제거해도 성공하며 `alreadyInactive=true`가 반환된다.
 
@@ -1058,16 +1078,33 @@ type GeminiChatResponse = {
   citedMedicationIds: string[];
   citedInteractionIds: string[];
   disclaimer: string;
-  safetyIntent?: "general" | "interaction" | "dose_change" | "stop_medication" | "alcohol" | "pregnancy" | "emergency" | "prompt_attack";
+  safetyIntent?:
+    | "general"
+    | "interaction"
+    | "dose_change"
+    | "stop_medication"
+    | "alcohol"
+    | "pregnancy"
+    | "emergency"
+    | "prompt_attack";
   selectedMedicationContext?: {
-    source: "user_medication" | "detected_medication" | "medication_master" | "scan" | "active_medications";
+    source:
+      | "user_medication"
+      | "detected_medication"
+      | "medication_master"
+      | "scan"
+      | "active_medications";
     userMedicationId: string | null;
     detectedMedicationId: string | null;
     medicationId: string | null;
     name: string | null;
   };
   interactionEvidence?: {
-    mode: "not_interaction_question" | "confirmed_warning" | "no_registered_warning" | "insufficient_context";
+    mode:
+      | "not_interaction_question"
+      | "confirmed_warning"
+      | "no_registered_warning"
+      | "insufficient_context";
     checkedMedicationIds: string[];
     interactions: Array<{
       id: string;
@@ -1105,16 +1142,33 @@ export async function askMedicationChatbot(params: {
     citedMedicationIds: string[];
     citedInteractionIds: string[];
     disclaimer: string;
-    safetyIntent?: "general" | "interaction" | "dose_change" | "stop_medication" | "alcohol" | "pregnancy" | "emergency" | "prompt_attack";
+    safetyIntent?:
+      | "general"
+      | "interaction"
+      | "dose_change"
+      | "stop_medication"
+      | "alcohol"
+      | "pregnancy"
+      | "emergency"
+      | "prompt_attack";
     selectedMedicationContext?: {
-      source: "user_medication" | "detected_medication" | "medication_master" | "scan" | "active_medications";
+      source:
+        | "user_medication"
+        | "detected_medication"
+        | "medication_master"
+        | "scan"
+        | "active_medications";
       userMedicationId: string | null;
       detectedMedicationId: string | null;
       medicationId: string | null;
       name: string | null;
     };
     interactionEvidence?: {
-      mode: "not_interaction_question" | "confirmed_warning" | "no_registered_warning" | "insufficient_context";
+      mode:
+        | "not_interaction_question"
+        | "confirmed_warning"
+        | "no_registered_warning"
+        | "insufficient_context";
       checkedMedicationIds: string[];
       interactions: unknown[];
       message: string;
@@ -1203,7 +1257,8 @@ export async function listMedicationSchedules(params?: {
   active?: boolean;
 }) {
   const query = new URLSearchParams();
-  if (params?.userMedicationId) query.set("userMedicationId", params.userMedicationId);
+  if (params?.userMedicationId)
+    query.set("userMedicationId", params.userMedicationId);
   if (params?.active !== undefined) query.set("active", String(params.active));
 
   const { data, error } = await supabase.functions.invoke(
@@ -1225,7 +1280,12 @@ type CreateMedicationScheduleRequest = {
   userMedicationId: string;
   takeTime?: string; // HH:mm 또는 HH:mm:ss
   takeTimes?: string[]; // HH:mm 또는 HH:mm:ss, 하루 여러 번 복용 시 사용
-  timingRule?: "before_meal" | "after_meal" | "with_meal" | "bedtime" | "custom";
+  timingRule?:
+    | "before_meal"
+    | "after_meal"
+    | "with_meal"
+    | "bedtime"
+    | "custom";
   doseAmount?: number;
   doseUnit?: string;
   daysOfWeek?: number[]; // 0=Sunday ... 6=Saturday
@@ -1243,7 +1303,13 @@ type MedicationSchedule = {
   id: string;
   user_medication_id: string;
   take_time: string;
-  timing_rule: "before_meal" | "after_meal" | "with_meal" | "bedtime" | "custom" | null;
+  timing_rule:
+    | "before_meal"
+    | "after_meal"
+    | "with_meal"
+    | "bedtime"
+    | "custom"
+    | null;
   dose_amount: number | null;
   dose_unit: string | null;
   days_of_week: number[];
@@ -1266,7 +1332,12 @@ export async function createMedicationSchedule(params: {
   userMedicationId: string;
   takeTime?: string;
   takeTimes?: string[];
-  timingRule?: "before_meal" | "after_meal" | "with_meal" | "bedtime" | "custom";
+  timingRule?:
+    | "before_meal"
+    | "after_meal"
+    | "with_meal"
+    | "bedtime"
+    | "custom";
   doseAmount?: number;
   doseUnit?: string;
   daysOfWeek?: number[];
@@ -1275,9 +1346,12 @@ export async function createMedicationSchedule(params: {
   endDate?: string | null;
   active?: boolean;
 }) {
-  const { data, error } = await supabase.functions.invoke("medication-schedules", {
-    body: params,
-  });
+  const { data, error } = await supabase.functions.invoke(
+    "medication-schedules",
+    {
+      body: params,
+    },
+  );
 
   if (error) throw error;
   return data;
@@ -1310,7 +1384,12 @@ Request Body:
 type UpdateMedicationScheduleRequest = {
   scheduleId: string;
   takeTime?: string; // HH:mm 또는 HH:mm:ss
-  timingRule?: "before_meal" | "after_meal" | "with_meal" | "bedtime" | "custom";
+  timingRule?:
+    | "before_meal"
+    | "after_meal"
+    | "with_meal"
+    | "bedtime"
+    | "custom";
   doseAmount?: number | null;
   doseUnit?: string | null;
   daysOfWeek?: number[];
@@ -1324,11 +1403,16 @@ type UpdateMedicationScheduleRequest = {
 사용 예:
 
 ```tsx
-export async function updateMedicationSchedule(params: UpdateMedicationScheduleRequest) {
-  const { data, error } = await supabase.functions.invoke("medication-schedules", {
-    method: "PATCH",
-    body: params,
-  });
+export async function updateMedicationSchedule(
+  params: UpdateMedicationScheduleRequest,
+) {
+  const { data, error } = await supabase.functions.invoke(
+    "medication-schedules",
+    {
+      method: "PATCH",
+      body: params,
+    },
+  );
 
   if (error) throw error;
   return data as { schedule: MedicationSchedule };
@@ -1337,14 +1421,17 @@ export async function updateMedicationSchedule(params: UpdateMedicationScheduleR
 
 ### 12.3 일정 비활성화
 
-삭제는 DB hard delete가 아니라 `active=false`, `notification_enabled=false` 처리다. 이 API는 개별 일정만 비활성화한다. 약 전체를 현재 복용 목록에서 제거하려면 `user-medications`의 `DELETE` 메서드를 사용한다.
+삭제는 DB hard delete가 아니라 `active=false`, `notification_enabled=false` 처리다. 이 API는 개별 일정만 비활성화한다. 잘못 추가한 복용약 1개를 현재 복용약 목록에서 제거하려면 `user_medications.id`로 `user-medications`의 `DELETE` 메서드를 호출한다.
 
 ```tsx
 export async function deactivateMedicationSchedule(scheduleId: string) {
-  const { data, error } = await supabase.functions.invoke("medication-schedules", {
-    method: "DELETE",
-    body: { scheduleId },
-  });
+  const { data, error } = await supabase.functions.invoke(
+    "medication-schedules",
+    {
+      method: "DELETE",
+      body: { scheduleId },
+    },
+  );
 
   if (error) throw error;
   return data as { schedule: MedicationSchedule };
@@ -1397,7 +1484,12 @@ type SuggestMedicationSchedulesResponse = {
   medicationName: string | null;
   suggestions: Array<{
     takeTime: string; // HH:mm:ss
-    timingRule: "before_meal" | "after_meal" | "with_meal" | "bedtime" | "custom";
+    timingRule:
+      | "before_meal"
+      | "after_meal"
+      | "with_meal"
+      | "bedtime"
+      | "custom";
     doseAmount: number | null;
     doseUnit: string | null;
     daysOfWeek: number[];
@@ -1413,9 +1505,12 @@ type SuggestMedicationSchedulesResponse = {
 사용 예:
 
 ```tsx
-const { data, error } = await supabase.functions.invoke("suggest-medication-schedules", {
-  body: { userMedicationId, scanId },
-});
+const { data, error } = await supabase.functions.invoke(
+  "suggest-medication-schedules",
+  {
+    body: { userMedicationId, scanId },
+  },
+);
 if (error) throw error;
 ```
 
@@ -1471,9 +1566,12 @@ export async function checkMedicationLog(params: {
   plannedTime?: string;
   status?: "taken" | "missed" | "skipped";
 }) {
-  const { data, error } = await supabase.functions.invoke("medication-logs-check", {
-    body: params,
-  });
+  const { data, error } = await supabase.functions.invoke(
+    "medication-logs-check",
+    {
+      body: params,
+    },
+  );
 
   if (error) throw error;
   return data;
@@ -1531,7 +1629,13 @@ type MedicationChecklistResponse = {
     entpName: string | null;
     plannedDate: string;
     plannedTime: string;
-    timingRule: "before_meal" | "after_meal" | "with_meal" | "bedtime" | "custom" | null;
+    timingRule:
+      | "before_meal"
+      | "after_meal"
+      | "with_meal"
+      | "bedtime"
+      | "custom"
+      | null;
     doseAmount: number | null;
     doseUnit: string | null;
     status: "pending" | "taken" | "missed" | "skipped";
@@ -1543,9 +1647,12 @@ type MedicationChecklistResponse = {
 사용 예:
 
 ```tsx
-const { data, error } = await supabase.functions.invoke("medication-checklist", {
-  body: { date: "2026-05-22" },
-});
+const { data, error } = await supabase.functions.invoke(
+  "medication-checklist",
+  {
+    body: { date: "2026-05-22" },
+  },
+);
 if (error) throw error;
 ```
 
@@ -1596,9 +1703,12 @@ type CheckInteractionsResponse = {
 
 ```tsx
 export async function checkInteractions(medicationId: string) {
-  const { data, error } = await supabase.functions.invoke("check-interactions", {
-    body: { medicationId },
-  });
+  const { data, error } = await supabase.functions.invoke(
+    "check-interactions",
+    {
+      body: { medicationId },
+    },
+  );
 
   if (error) throw error;
   return data as {
@@ -1664,7 +1774,9 @@ export async function registerFcmToken() {
   if (permission !== "granted") return { supported: true, token: null };
 
   const app = initializeApp(firebaseConfig);
-  const registration = await navigator.serviceWorker.register("/firebase-messaging-sw.js");
+  const registration = await navigator.serviceWorker.register(
+    "/firebase-messaging-sw.js",
+  );
   const messaging = getMessaging(app);
   const token = await getToken(messaging, {
     vapidKey: import.meta.env.VITE_FIREBASE_WEB_PUSH_VAPID_KEY,
@@ -1691,8 +1803,12 @@ export async function registerFcmToken() {
 `public/firebase-messaging-sw.js` 예:
 
 ```jsx
-importScripts("<https://www.gstatic.com/firebasejs/12.13.0/firebase-app-compat.js>");
-importScripts("<https://www.gstatic.com/firebasejs/12.13.0/firebase-messaging-compat.js>");
+importScripts(
+  "<https://www.gstatic.com/firebasejs/12.13.0/firebase-app-compat.js>",
+);
+importScripts(
+  "<https://www.gstatic.com/firebasejs/12.13.0/firebase-messaging-compat.js>",
+);
 
 firebase.initializeApp({
   apiKey: "<Firebase web api key>",
@@ -1778,9 +1894,12 @@ export async function saveNotificationToken(params: {
   timezone?: string;
   enabled?: boolean;
 }) {
-  const { data, error } = await supabase.functions.invoke("notification-tokens", {
-    body: params,
-  });
+  const { data, error } = await supabase.functions.invoke(
+    "notification-tokens",
+    {
+      body: params,
+    },
+  );
 
   if (error) throw error;
   return data;
@@ -1837,9 +1956,12 @@ export async function sendMedicationReminders(params?: {
   dryRun?: boolean;
   includeReminders?: boolean;
 }) {
-  const { data, error } = await supabase.functions.invoke("send-medication-reminders", {
-    body: params ?? { dryRun: true },
-  });
+  const { data, error } = await supabase.functions.invoke(
+    "send-medication-reminders",
+    {
+      body: params ?? { dryRun: true },
+    },
+  );
 
   if (error) throw error;
   return data as {
@@ -1876,6 +1998,7 @@ export async function sendMedicationReminders(params?: {
 ### 15.1 Supabase Cron 기반 정기 알림 발송
 
 **프론트 역할 명확화:**
+
 - 프론트는 **FCM 토큰 저장**만 담당한다.
 - 실제 복약 알림 **발송은 Supabase Cron**에서 30분 주기로 자동 수행한다.
 
@@ -2146,7 +2269,8 @@ caregiver_links
 export async function listActiveUserMedications() {
   const { data, error } = await supabase
     .from("user_medications")
-    .select(`
+    .select(
+      `
       id,
       custom_name,
       start_date,
@@ -2160,7 +2284,8 @@ export async function listActiveUserMedications() {
         precautions,
         storage_method
       )
-    `)
+    `,
+    )
     .eq("active", true)
     .order("created_at", { ascending: false });
 
@@ -2175,7 +2300,8 @@ export async function listActiveUserMedications() {
 export async function getScanResult(scanId: string) {
   const { data, error } = await supabase
     .from("scan_detected_medications")
-    .select(`
+    .select(
+      `
       id,
       detected_name,
       matched_name,
@@ -2190,7 +2316,8 @@ export async function getScanResult(scanId: string) {
         precautions,
         storage_method
       )
-    `)
+    `,
+    )
     .eq("scan_id", scanId)
     .order("confidence", { ascending: false });
 
@@ -2201,13 +2328,11 @@ export async function getScanResult(scanId: string) {
 
 ## 19. 권장 화면 구성
 
-- [x]  19.1 로그인 화면
-    
-    필수 요소:
-    
-    - Google 로그인 버튼
-    - 개인정보/민감정보 처리 안내
-    - “본 서비스는 참고용이며 정확한 복약은 전문가에게 확인” 문구
+- [x] 19.1 로그인 화면
+  필수 요소:
+  - Google 로그인 버튼
+  - 개인정보/민감정보 처리 안내
+  - “본 서비스는 참고용이며 정확한 복약은 전문가에게 확인” 문구
 
 ### 19.2 메인 화면
 

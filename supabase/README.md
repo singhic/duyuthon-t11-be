@@ -527,17 +527,20 @@ WHERE jobname = 'send-medication-reminders-every-30-min';
 다음 조건을 모두 만족한 후에만 dry-run에서 실발송(`dryRun=false`)으로 전환한다.
 
 **사전 준비:**
+
 1. 실제 프론트 앱(브라우저 또는 모바일)에서 FCM token 저장 성공
 2. 테스트 사용자에게 active `user_medications` 1개 이상 존재
 3. 해당 약품에 active `medication_schedules` 1개 이상, `notification_enabled=true`
 4. 해당 일정의 `planned_date`, `planned_time`이 향후 30분 이내
 
 **Dry-run 검증:**
+
 1. 운영자가 `maintenance-runner`를 수동 호출: `dryRun=true`, `targetUserId=<테스트사용자UUID>`
 2. 응답에서 `pendingCount > 0` 확인 (대상이 정확히 계산되었는지)
 3. `cron.job_run_details`에서 동일 시간대 실행 로그 없음 확인 (수동 호출은 cron 로그에 안 남음)
 
 **Controlled real-send 테스트:**
+
 1. 운영자가 `maintenance-runner` 수동 호출: `dryRun=false`, `targetUserId=<테스트사용자UUID>`
 2. 응답에서 `sentCount > 0` 확인
 3. 실제 기기/브라우저에서 FCM 푸시 수신 확인

@@ -13,7 +13,7 @@ Base URL: `https://hygsrrmoawezonahnljn.supabase.co`
 
 - 사용자의 건강/복약 데이터는 Supabase Auth 사용자 기준으로 격리한다.
 - 약품 마스터 데이터(`medications`)와 사용자 복용 데이터(`user_medications`)를 분리한다.
-- 사용자 복용약 제거는 hard delete가 아니라 soft delete로 처리한다.
+- 잘못 추가한 사용자 복용약 1개 제거는 hard delete가 아니라 soft delete로 처리한다.
 - OCR 원문, 이미지, 채팅 메시지 등 민감정보는 TTL 및 redaction job으로 정리한다.
 - FCM 발송은 프론트가 아니라 백엔드 scheduled job이 수행한다.
 
@@ -134,7 +134,7 @@ OCR 제한:
 | Function | Auth | 설명 |
 |---|---:|---|
 | `confirm-medication` | JWT | OCR 감지 약품을 사용자 복용약으로 확정하거나 기존 복용약 이름 수정 |
-| `user-medications` | JWT | 현재 복용약 조회 및 약 전체 제거 |
+| `user-medications` | JWT | 현재 복용약 조회 및 잘못 추가한 복용약 항목 1개 제거 |
 | `medication-schedules` | JWT | 복약 일정 생성/조회/수정/비활성화 |
 | `medication-checklist` | JWT | 날짜별 복약 체크리스트 조회 |
 | `medication-logs-check` | JWT | 복용 완료/스킵 로그 생성 |
@@ -158,6 +158,7 @@ OCR 제한:
   - `medications` 상세 정보를 join해서 반환한다.
 - `DELETE /functions/v1/user-medications`
   - body: `{ "userMedicationId": "uuid" }`
+  - 현재 사용자 소유 `user_medications` row 1개만 제거한다.
   - soft delete:
     - `user_medications.active=false`
     - `end_date=Asia/Seoul 오늘`

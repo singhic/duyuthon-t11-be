@@ -54,6 +54,9 @@ verify_jwt = true
 [functions.confirm-medication]
 verify_jwt = true
 
+[functions.user-medications]
+verify_jwt = true
+
 [functions.notification-tokens]
 verify_jwt = true
 
