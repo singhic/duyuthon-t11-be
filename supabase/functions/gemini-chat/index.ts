@@ -93,6 +93,13 @@ const QUESTION_TOKEN_STOP_WORDS = new Set([
 ]);
 
 function errorMessage(error: unknown): string {
+  if (error instanceof HttpError) {
+    return JSON.stringify({
+      message: error.message,
+      status: error.status,
+      details: error.details,
+    });
+  }
   if (error instanceof Error) return error.message;
   try {
     return JSON.stringify(error);
@@ -187,9 +194,15 @@ function normalizeQuestionToken(value: string): string {
 }
 
 function stripKoreanQuestionSuffix(value: string): string {
-  return value
-    .replace(/(이란|란|인가요|인가|이에요|예요|이야|야)$/u, "")
-    .replace(/(은|는|이|가|을|를|과|와|랑|도|에|로|으로)$/u, "");
+  let next = value;
+  for (let index = 0; index < 3; index += 1) {
+    const stripped = next
+      .replace(/(이란|란|인가요|인가|이에요|예요|이야|야)$/u, "")
+      .replace(/(은|는|이|가|을|를|과|와|랑|도|에|로|으로)$/u, "");
+    if (stripped === next) break;
+    next = stripped;
+  }
+  return next;
 }
 
 function extractMedicationSearchTerms(question: string): string[] {
@@ -365,6 +378,79 @@ async function loadInteractionEvidence(
     interactions: [],
     message: "현재 DB에 등록된 상호작용 경고는 없습니다. 그러나 이는 안전 확정이 아니라 미등록 또는 미동기화 가능성이 있는 상태입니다.",
     isConfirmedSafe: false,
+  };
+}
+
+function isSimpleGreeting(question: string): boolean {
+  return /^(안녕|안녕하세요|하이|hi|hello|헬로|ㅎㅇ)[!.?\s]*$/i.test(question.trim());
+}
+
+function compactMedicalText(value: unknown, maxLength = 900): string | null {
+  if (typeof value !== "string") return null;
+  const text = value
+    .replace(/<!\[CDATA\[/g, " ")
+    .replace(/\]\]>/g, " ")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!text) return null;
+  return text.length > maxLength ? `${text.slice(0, maxLength)}...` : text;
+}
+
+function compactMedicationRecord(row: any): Record<string, unknown> {
+  const medication = relationOne(row?.medications) ?? row;
+  return {
+    id: row?.id ?? medication?.id ?? null,
+    medication_id: row?.medication_id ?? medication?.id ?? null,
+    name: medicationName(row),
+    item_name: medication?.item_name ?? null,
+    custom_name: row?.custom_name ?? null,
+    matched_name: row?.matched_name ?? null,
+    detected_name: row?.detected_name ?? null,
+    confidence: row?.confidence ?? null,
+    match_quality: row?.match_quality ?? null,
+    needs_confirmation: row?.needs_confirmation ?? null,
+    warning_message: row?.warning_message ?? null,
+    efficacy: compactMedicalText(medication?.efficacy),
+    dosage: compactMedicalText(medication?.dosage),
+    precautions: compactMedicalText(medication?.precautions, 1200),
+    side_effects: compactMedicalText(medication?.side_effects),
+    storage_method: medication?.storage_method ?? null,
+    administration_timing: medication?.administration_timing ?? null,
+    information_completeness: medication?.information_completeness ?? null,
+  };
+}
+
+function medicationNamesById(medications: MedicationContextItem[]): Map<string, string> {
+  const names = new Map<string, string>();
+  for (const medication of medications) {
+    if (medication.medicationId && !names.has(medication.medicationId)) {
+      names.set(medication.medicationId, medication.name);
+    }
+  }
+  return names;
+}
+
+function noRegisteredWarningAnswer(
+  interactionEvidence: InteractionEvidence,
+  medications: MedicationContextItem[],
+): MedicationAnswer {
+  const names = medicationNamesById(medications);
+  const checkedNames = interactionEvidence.checkedMedicationIds
+    .map((id) => names.get(id))
+    .filter((name): name is string => Boolean(name));
+  const targetText = checkedNames.length > 0
+    ? `${checkedNames.join(", ")} 조합은`
+    : "질문하신 약 조합은";
+
+  return {
+    answer: `${targetText} 현재 DB에 등록된 상호작용 경고는 없습니다. 다만 이것이 함께 복용해도 완전히 안전하다는 뜻은 아니므로, 처방 상황이나 지병이 있으면 약사 또는 의사에게 확인하세요.`,
+    safetyLevel: "caution",
+    needsDoctorOrPharmacist: true,
+    citedMedicationIds: interactionEvidence.checkedMedicationIds,
+    citedInteractionIds: [],
+    disclaimer: DEFAULT_DISCLAIMER,
   };
 }
 
@@ -623,18 +709,63 @@ Deno.serve(async (req) => {
       };
     }
 
-    const medicationContext = uniqueMedicationContext(
+    const fullMedicationContext = uniqueMedicationContext(
       [...(activeMeds ?? []), ...selectedActiveMeds],
       [...(detected ?? []), ...selectedDetectedMeds],
       contextMedicationMasters,
     );
+    const mentionedMedicationContext = uniqueMedicationContext(
+      selectedActiveMeds,
+      selectedDetectedMeds,
+      contextMedicationMasters,
+    );
     const safetyIntent = classifySafetyIntent(question);
+    const medicationContext = safetyIntent === "interaction" &&
+        !userMedicationId &&
+        !detectedMedicationId &&
+        !medicationId &&
+        mentionedMedicationContext.length >= 2
+      ? mentionedMedicationContext
+      : fullMedicationContext;
     const interactionEvidence = await loadInteractionEvidence(
       serviceClient,
       question,
       medicationContext,
       safetyIntent,
     );
+
+    if (isSimpleGreeting(question)) {
+      const greetingAnswer: MedicationAnswer = {
+        answer: "안녕하세요. 복용 중인 약, 약 이름, 같이 먹어도 되는지 같은 복약 질문을 도와드릴게요.",
+        safetyLevel: "info",
+        needsDoctorOrPharmacist: false,
+        citedMedicationIds: [],
+        citedInteractionIds: [],
+        disclaimer: DEFAULT_DISCLAIMER,
+      };
+
+      await serviceClient.from("chat_messages").insert({
+        chat_session_id: chatSessionId,
+        role: "assistant",
+        content: greetingAnswer.answer,
+        model_name: "deterministic-greeting",
+        citations: {
+          safetyIntent,
+          interactionEvidence,
+          selectedMedicationContext,
+        },
+        safety_level: greetingAnswer.safetyLevel,
+        needs_doctor_or_pharmacist: greetingAnswer.needsDoctorOrPharmacist,
+      });
+
+      return json({
+        chatSessionId,
+        ...greetingAnswer,
+        safetyIntent,
+        interactionEvidence,
+        selectedMedicationContext,
+      });
+    }
 
     const deterministicAnswer = deterministicAnswerForIntent(safetyIntent);
     if (deterministicAnswer) {
@@ -654,6 +785,32 @@ Deno.serve(async (req) => {
       return json({
         chatSessionId,
         ...deterministicAnswer,
+        safetyIntent,
+        interactionEvidence,
+        selectedMedicationContext,
+      });
+    }
+
+    if (interactionEvidence.mode === "no_registered_warning") {
+      const interactionAnswer = noRegisteredWarningAnswer(interactionEvidence, medicationContext);
+
+      await serviceClient.from("chat_messages").insert({
+        chat_session_id: chatSessionId,
+        role: "assistant",
+        content: interactionAnswer.answer,
+        model_name: "deterministic-interaction-evidence",
+        citations: {
+          safetyIntent,
+          interactionEvidence,
+          selectedMedicationContext,
+        },
+        safety_level: interactionAnswer.safetyLevel,
+        needs_doctor_or_pharmacist: interactionAnswer.needsDoctorOrPharmacist,
+      });
+
+      return json({
+        chatSessionId,
+        ...interactionAnswer,
         safetyIntent,
         interactionEvidence,
         selectedMedicationContext,
@@ -713,13 +870,13 @@ Deno.serve(async (req) => {
             : null,
         }
         : null,
-      activeMedications: activeMeds ?? [],
-      scanMedications: detected ?? [],
+      activeMedications: (activeMeds ?? []).map(compactMedicationRecord),
+      scanMedications: (detected ?? []).map(compactMedicationRecord),
       selectedMedicationContext,
       selectedMedications: {
-        userMedications: selectedActiveMeds,
-        detectedMedications: selectedDetectedMeds,
-        medicationMasters: contextMedicationMasters,
+        userMedications: selectedActiveMeds.map(compactMedicationRecord),
+        detectedMedications: selectedDetectedMeds.map(compactMedicationRecord),
+        medicationMasters: contextMedicationMasters.map(compactMedicationRecord),
         questionMedicationMatches: questionMedicationLookup.matches,
         questionSearchTerms: questionMedicationLookup.searchTerms,
       },
