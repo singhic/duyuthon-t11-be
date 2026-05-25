@@ -183,6 +183,8 @@ OCR 제한:
 - 프롬프트 우회, 시스템 프롬프트 공개 요청
 - 복약과 무관한 법률/금융/정치/일반 상담
 
+질문에 약품명이 직접 포함된 경우, 예를 들어 `타이레놀이 뭐야?`, `gemini-chat`는 질문 문자열에서 약품명 후보를 추출해 `find_medication_candidates_bulk`로 공식 `medications`/`medication_aliases`를 검색하고 Gemini 컨텍스트에 포함한다. 명시적인 `userMedicationId`, `detectedMedicationId`, `medicationId`가 있으면 해당 ID 기반 컨텍스트가 우선이다.
+
 ### 알림
 
 | Function | Auth | 설명 |

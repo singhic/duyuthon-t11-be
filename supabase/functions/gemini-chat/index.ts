@@ -19,6 +19,17 @@ type MedicationContextItem = {
   medicationId: string | null;
 };
 
+type MedicationCandidateMatch = {
+  search_text: string;
+  id: string;
+  item_name: string;
+  similarity_score: number;
+  match_rank: number;
+  match_source: "exact" | "fuzzy" | "alias" | "edi_code" | "barcode" | string;
+  alias_requires_confirmation?: boolean | null;
+  alias_type?: string | null;
+};
+
 type SelectedMedicationContext = {
   source: "user_medication" | "detected_medication" | "medication_master" | "scan" | "active_medications";
   userMedicationId: string | null;
@@ -53,6 +64,33 @@ type SafetyIntent =
   | "prompt_attack";
 
 const DEFAULT_DISCLAIMER = "이 정보는 참고용이며 AI 답변은 틀릴 수 있습니다. 정확한 복약 방법과 약물 상호작용은 의사 또는 약사에게 확인하세요.";
+const CHAT_MEDICATION_SELECT = "id,item_name,efficacy,dosage,precautions,side_effects,storage_method,administration_timing,information_completeness,source,source_updated_at";
+const QUESTION_TOKEN_STOP_WORDS = new Set([
+  "뭐",
+  "뭐야",
+  "무엇",
+  "어떤약",
+  "어떤",
+  "약",
+  "약이야",
+  "약인가",
+  "약인가요",
+  "알려줘",
+  "설명해줘",
+  "궁금해",
+  "먹어도",
+  "복용해도",
+  "같이",
+  "함께",
+  "동시에",
+  "식전",
+  "식후",
+  "언제",
+  "어떻게",
+  "주의사항",
+  "효능",
+  "효과",
+]);
 
 function errorMessage(error: unknown): string {
   if (error instanceof Error) return error.message;
@@ -140,6 +178,93 @@ function relationOne(value: any): any | null {
 function optionalNonEmptyString(value: string | undefined): string | undefined {
   const trimmed = value?.trim();
   return trimmed ? trimmed : undefined;
+}
+
+function normalizeQuestionToken(value: string): string {
+  return value
+    .replace(/^[^0-9A-Za-z가-힣]+|[^0-9A-Za-z가-힣]+$/g, "")
+    .trim();
+}
+
+function stripKoreanQuestionSuffix(value: string): string {
+  return value
+    .replace(/(이란|란|인가요|인가|이에요|예요|이야|야)$/u, "")
+    .replace(/(은|는|이|가|을|를|과|와|랑|도|에|로|으로)$/u, "");
+}
+
+function extractMedicationSearchTerms(question: string): string[] {
+  const terms = new Set<string>();
+  const tokens = question.match(/[0-9A-Za-z가-힣][0-9A-Za-z가-힣.+-]{1,}/g) ?? [];
+
+  for (const rawToken of tokens) {
+    const normalized = normalizeQuestionToken(rawToken);
+    const stripped = stripKoreanQuestionSuffix(normalized);
+
+    for (const token of [normalized, stripped]) {
+      const compact = token.replace(/\s+/g, "");
+      const lower = compact.toLowerCase();
+      if (compact.length < 2) continue;
+      if (QUESTION_TOKEN_STOP_WORDS.has(lower) || QUESTION_TOKEN_STOP_WORDS.has(compact)) continue;
+      terms.add(compact);
+    }
+  }
+
+  return [...terms].slice(0, 8);
+}
+
+function isReliableQuestionMedicationMatch(match: MedicationCandidateMatch): boolean {
+  if (match.match_rank > 3) return false;
+  if (["exact", "alias", "edi_code", "barcode"].includes(match.match_source)) return true;
+  const searchText = String(match.search_text ?? "").replace(/\s+/g, "").toLowerCase();
+  const itemName = String(match.item_name ?? "").replace(/\s+/g, "").toLowerCase();
+  if (searchText.length >= 3 && itemName.includes(searchText)) return true;
+  return Number(match.similarity_score ?? 0) >= 0.55;
+}
+
+async function loadQuestionMedicationMasters(
+  serviceClient: any,
+  question: string,
+): Promise<{ medicationMasters: any[]; matches: MedicationCandidateMatch[]; searchTerms: string[] }> {
+  const searchTerms = extractMedicationSearchTerms(question);
+  if (searchTerms.length === 0) {
+    return { medicationMasters: [], matches: [], searchTerms: [] };
+  }
+
+  const { data: candidateMatches, error: candidateError } = await serviceClient.rpc(
+    "find_medication_candidates_bulk",
+    {
+      search_texts: searchTerms,
+      max_results: 3,
+    },
+  );
+
+  if (candidateError) {
+    throw new HttpError(500, "Failed to search medication names from question", candidateError);
+  }
+
+  const reliableMatches = ((candidateMatches ?? []) as MedicationCandidateMatch[])
+    .filter(isReliableQuestionMedicationMatch);
+  const medicationIds = [...new Set(reliableMatches.map((match) => match.id).filter(Boolean))].slice(0, 5);
+
+  if (medicationIds.length === 0) {
+    return { medicationMasters: [], matches: [], searchTerms };
+  }
+
+  const { data: medicationMasters, error: medicationError } = await serviceClient
+    .from("medications")
+    .select(CHAT_MEDICATION_SELECT)
+    .in("id", medicationIds);
+
+  if (medicationError) {
+    throw new HttpError(500, "Failed to load medications mentioned in question", medicationError);
+  }
+
+  const byId = new Map((medicationMasters ?? []).map((medication: any) => [medication.id, medication]));
+  return {
+    medicationMasters: medicationIds.map((id) => byId.get(id)).filter(Boolean),
+    matches: reliableMatches.filter((match) => byId.has(match.id)),
+    searchTerms,
+  };
 }
 
 async function loadInteractionEvidence(
@@ -458,7 +583,7 @@ Deno.serve(async (req) => {
     } else if (medicationId) {
       const { data: selected, error: selectedError } = await serviceClient
         .from("medications")
-        .select("id,item_name,efficacy,dosage,precautions,side_effects,storage_method,administration_timing,information_completeness,source,source_updated_at")
+        .select(CHAT_MEDICATION_SELECT)
         .eq("id", medicationId)
         .maybeSingle();
 
@@ -475,10 +600,33 @@ Deno.serve(async (req) => {
       };
     }
 
+    const questionMedicationLookup = await loadQuestionMedicationMasters(serviceClient, question);
+    const explicitMedicationMasterIds = new Set(selectedMedicationMasters.map((medication) => medication.id));
+    const questionMedicationMasters = questionMedicationLookup.medicationMasters
+      .filter((medication) => !explicitMedicationMasterIds.has(medication.id));
+    const contextMedicationMasters = [...selectedMedicationMasters, ...questionMedicationMasters];
+
+    if (
+      !userMedicationId &&
+      !detectedMedicationId &&
+      !medicationId &&
+      !scanId &&
+      questionMedicationMasters.length === 1
+    ) {
+      const selected = questionMedicationMasters[0];
+      selectedMedicationContext = {
+        source: "medication_master",
+        userMedicationId: null,
+        detectedMedicationId: null,
+        medicationId: selected.id,
+        name: medicationName(selected),
+      };
+    }
+
     const medicationContext = uniqueMedicationContext(
       [...(activeMeds ?? []), ...selectedActiveMeds],
       [...(detected ?? []), ...selectedDetectedMeds],
-      selectedMedicationMasters,
+      contextMedicationMasters,
     );
     const safetyIntent = classifySafetyIntent(question);
     const interactionEvidence = await loadInteractionEvidence(
@@ -571,7 +719,9 @@ Deno.serve(async (req) => {
       selectedMedications: {
         userMedications: selectedActiveMeds,
         detectedMedications: selectedDetectedMeds,
-        medicationMasters: selectedMedicationMasters,
+        medicationMasters: contextMedicationMasters,
+        questionMedicationMatches: questionMedicationLookup.matches,
+        questionSearchTerms: questionMedicationLookup.searchTerms,
       },
       safetyIntent,
       interactionEvidence,

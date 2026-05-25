@@ -1189,6 +1189,8 @@ const result = await askMedicationChatbot({
 
 특정 약 상세 화면에서는 `userMedicationId`, OCR 후보 카드에서는 `detectedMedicationId`, 약품 마스터 상세에서는 `medicationId`를 함께 보낸다. 프론트가 약 이름/복용법 원문을 직접 보내더라도 백엔드는 이를 공식 근거로 쓰지 않는다. 공식 맥락은 ID로 조회한 DB 데이터만 사용한다.
 
+사용자가 `타이레놀이 뭐야?`처럼 약 이름을 질문 문장에 직접 쓴 경우, 백엔드는 질문 안의 약품명 후보를 공식 `medications`/`medication_aliases` 매칭으로 검색해 Gemini 컨텍스트에 자동 포함한다. 그래도 상세 화면처럼 이미 약 ID를 알고 있는 경우에는 `medicationId` 또는 `userMedicationId`를 함께 보내는 것이 가장 정확하다.
+
 응답 예시:
 
 ```json
