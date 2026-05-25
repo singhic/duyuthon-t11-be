@@ -815,6 +815,8 @@ await confirmMedication({
 
 기존 복용약 이름 수정 모드에서는 `userMedicationId`로 현재 로그인 사용자의 `user_medications` row를 찾고, `custom_name`만 업데이트한다. 해당 row가 현재 사용자 소유가 아니거나 없으면 `404`가 반환된다.
 
+복용약 제거는 `confirm-medication`에서 처리하지 않는다. 현재 복용약 목록에서 약을 제거하려면 `user-medications`의 `DELETE` 메서드를 사용한다.
+
 에러 처리:
 
 - `400`: `detectedMedicationId`와 `userMedicationId`가 모두 없음
@@ -828,6 +830,142 @@ await confirmMedication({
 ```
 feat: Update request body to allow userMedicationId and enhance error handling for medication confirmation
 ```
+
+## 9.1 현재 복용약 관리
+
+현재 사용자가 등록한 복용약을 조회하거나 제거하는 API다. 제거는 DB hard delete가 아니라 현재 복용 목록에서 제외하는 soft delete다.
+
+Edge Function:
+
+```
+GET    /functions/v1/user-medications
+DELETE /functions/v1/user-medications
+```
+
+### 9.1.0 현재 복용약 조회
+
+Query:
+
+```tsx
+type ListUserMedicationsQuery = {
+  active?: "true" | "false" | "all"; // 기본값 "true"
+};
+
+type UserMedication = {
+  id: string;
+  user_id: string;
+  medication_id: string;
+  source_scan_id: string | null;
+  custom_name: string | null;
+  start_date: string | null;
+  end_date: string | null;
+  active: boolean;
+  created_at: string;
+  updated_at: string;
+  medications: {
+    id: string;
+    item_name: string;
+    entp_name: string | null;
+    efficacy: string | null;
+    dosage: string | null;
+    precautions: string | null;
+    side_effects: string | null;
+    storage_method: string | null;
+    administration_timing: string | null;
+    information_completeness: Record<string, boolean> | null;
+  } | null;
+};
+```
+
+사용 예:
+
+```tsx
+export async function listUserMedications(params?: {
+  active?: boolean | "all";
+}) {
+  const query = new URLSearchParams();
+  if (params?.active !== undefined) query.set("active", String(params.active));
+
+  const { data, error } = await supabase.functions.invoke(
+    `user-medications${query.size ? `?${query}` : ""}`,
+    { method: "GET" },
+  );
+
+  if (error) throw error;
+  return data as { userMedications: UserMedication[] };
+}
+```
+
+기본 조회는 `active=true`인 현재 복용약만 반환한다. 과거 제거 이력까지 필요할 때만 `active=all`을 사용한다.
+
+### 9.1.1 현재 복용약 제거
+
+Request Body:
+
+```tsx
+type RemoveUserMedicationRequest = {
+  userMedicationId: string;
+};
+```
+
+Response Body:
+
+```tsx
+type RemoveUserMedicationResponse = {
+  userMedicationId: string;
+  removed: boolean;
+  alreadyInactive: boolean;
+  deactivatedScheduleCount: number;
+  skippedNotificationCount: number;
+  userMedication: {
+    id: string;
+    medication_id: string;
+    active: false;
+    end_date: string | null;
+    updated_at: string;
+  };
+};
+```
+
+사용 예:
+
+```tsx
+export async function removeUserMedication(userMedicationId: string) {
+  const { data, error } = await supabase.functions.invoke("user-medications", {
+    method: "DELETE",
+    body: { userMedicationId },
+  });
+
+  if (error) throw error;
+  return data as RemoveUserMedicationResponse;
+}
+```
+
+동작:
+
+- `user_medications.active=false`, `end_date=서버 기준 오늘(Asia/Seoul)`로 변경한다.
+- 해당 약의 active 일정은 모두 `active=false`, `notification_enabled=false`, `end_date=오늘`로 변경한다.
+- 아직 발송되지 않은 pending 복약 알림 delivery는 `skipped` 처리한다.
+- 이미 제거된 약을 다시 제거해도 성공하며 `alreadyInactive=true`가 반환된다.
+
+보존되는 데이터:
+
+- `medication_logs`는 삭제하지 않는다. 과거 복약 이력과 리포트 근거로 유지한다.
+- `scan_sessions`, `scan_detected_medications`는 삭제하지 않는다. OCR 분석 이력과 현재 복용약 상태는 별개다.
+- `medications` 마스터 약품 데이터는 삭제하지 않는다.
+
+프론트 UX 원칙:
+
+- 제거 성공 즉시 로컬 복용약 목록에서 해당 약을 숨긴다.
+- 실패하면 optimistic update를 되돌리고 다시 시도할 수 있게 한다.
+- 제거 후 체크리스트와 알림 대상에서는 해당 약이 제외된다.
+- “기록 삭제”가 아니라 “현재 복용 중지/목록 제거”로 표현한다.
+
+에러 처리:
+
+- `400`: `userMedicationId` 누락 또는 `active` query 값이 `true`, `false`, `all`이 아님
+- `404`: 현재 로그인 사용자 소유의 복용약이 아님 또는 존재하지 않음
+- `500`: DB 조회 또는 비활성화 실패
 
 ## 10. 이미지 삭제
 
@@ -1198,7 +1336,7 @@ export async function updateMedicationSchedule(params: UpdateMedicationScheduleR
 
 ### 12.3 일정 비활성화
 
-삭제는 DB hard delete가 아니라 `active=false`, `notification_enabled=false` 처리다.
+삭제는 DB hard delete가 아니라 `active=false`, `notification_enabled=false` 처리다. 이 API는 개별 일정만 비활성화한다. 약 전체를 현재 복용 목록에서 제거하려면 `user-medications`의 `DELETE` 메서드를 사용한다.
 
 ```tsx
 export async function deactivateMedicationSchedule(scheduleId: string) {
