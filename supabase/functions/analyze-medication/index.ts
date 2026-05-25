@@ -202,6 +202,10 @@ export function isUsefulCandidateLine(line: string): boolean {
     return false;
   }
 
+  if (/^\d+\s*(회|일|정|포|캡슐|mg|ml|밀리그램|밀리리터)$/i.test(trimmed)) {
+    return false;
+  }
+
   // 4. 순수 성상 정보 제거
   if (isPureAppearanceLine(trimmed)) {
     return false;
@@ -284,25 +288,27 @@ function timeoutSignal(ms: number): AbortSignal {
   return controller.signal;
 }
 
-/**
- * OCR 원문에서 최소 2글자 이상의 의미 있는 토큰(n-gram)들을 추출하여
- * 공공 API 조회 시 0건 리턴(Zero-hit)을 방지하는 파라미터 후보군 생성 함수
- */
-export function generateNgramApiParams(rawText: string, n: number = 2): string[] {
-  // 1. 노이즈 제거: 공백, 단위 명칭 등 제거
-  let cleaned = rawText.replace(/\s+/g, "").trim().replace(/(정|캡슐|시럽|밀리그램|mg)/g, "");
-  if (cleaned.length < n) return [cleaned];
+function normalizeDrugNameForCompare(value: string | null | undefined): string {
+  return (value ?? "")
+    .replace(/\([^)]*\)/g, "")
+    .replace(/\s+/g, "")
+    .toLowerCase();
+}
 
-  const grams = new Set<string>();
-  
-  // 2. 전체 문자열 및 n-gram 토큰들 추출
-  grams.add(cleaned);
-  for (let i = 0; i <= cleaned.length - n; i++) {
-    grams.add(cleaned.substring(i, i + n));
+function isStrongNamePrefix(searchText: string, itemName: string | null | undefined): boolean {
+  const search = normalizeDrugNameForCompare(searchText);
+  const item = normalizeDrugNameForCompare(itemName);
+  return search.length >= 4 && item.startsWith(search);
+}
+
+function isAcceptableCandidateMatch(match: MedicationCandidateMatch): boolean {
+  if (match.match_source === "exact" || ["alias", "edi_code", "barcode"].includes(match.match_source ?? "")) {
+    return true;
   }
-
-  // 3. API 비용/트래픽을 고려해 상위 3개 키워드만 엄선
-  return Array.from(grams).slice(0, 3);
+  if ((match.similarity_score ?? 0) >= 0.65) {
+    return true;
+  }
+  return isStrongNamePrefix(match.search_text, match.item_name);
 }
 
 /**
@@ -342,6 +348,9 @@ async function loadMatches(
     
     const bestByCandidate = new Map<string, MedicationCandidateMatch>();
     for (const match of (matches ?? []) as MedicationCandidateMatch[]) {
+      if (!isAcceptableCandidateMatch(match)) {
+        continue;
+      }
       if (!bestByCandidate.has(match.search_text)) {
         bestByCandidate.set(match.search_text, match);
       }
@@ -461,8 +470,11 @@ async function runPublicDrugLookup(
       const keywords = generateNgramApiParams(rawOcrTerm);
       
       // 외부 API 호출: 여기도 try-catch로 감싸서 API 응답 장애에 대비함
+      const requestSignal = timeoutSignal(Math.min(4000, remaining));
       const apiResults = await Promise.all(
-        keywords.map(k => fetchDrugItemsByName(k).catch(() => []))
+        keywords.map((keyword) =>
+          fetchDrugItemsByName(keyword, { signal: requestSignal }).catch(() => [])
+        )
       );
       const mergedItems = apiResults.flat();
 
@@ -561,7 +573,8 @@ Deno.serve(async (req) => {
       typeof scan.confidence === "number" ? scan.confidence : null,
     );
     if (publicLookup.insertedMedicationCount > 0) {
-      bestByCandidate = await loadMatches(serviceClient, candidates);
+      const refreshedMatches = await loadMatches(serviceClient, candidates);
+      bestByCandidate = new Map([...refreshedMatches, ...bestByCandidate]);
     }
     if (publicLookup.attempted) {
       await logApiUsage(serviceClient, {
@@ -574,7 +587,17 @@ Deno.serve(async (req) => {
     }
 
     for (const candidate of candidates) {
-      const best = bestByCandidate.get(candidate);
+      const rawBest = bestByCandidate.get(candidate);
+      const rawConfidence = rawBest?.similarity_score ?? 0;
+      const rawIsExact = rawBest?.item_name === candidate || rawBest?.edi_code === candidate || rawBest?.match_source === "exact";
+      const best = rawBest && (
+        rawIsExact ||
+        rawConfidence >= 0.65 ||
+        ["alias", "edi_code", "barcode"].includes(rawBest.match_source ?? "") ||
+        isStrongNamePrefix(candidate, rawBest.item_name)
+      )
+        ? rawBest
+        : undefined;
       const confidence = best?.similarity_score ?? 0;
       const isExact = best?.item_name === candidate || best?.edi_code === candidate || best?.match_source === "exact";
       const matchSource = best?.match_source ?? (isExact ? "exact" : best ? "fuzzy" : "none");
