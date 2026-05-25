@@ -37,6 +37,17 @@ type SendResult = {
   status?: "sent" | "failed" | "skipped";
 };
 
+type ReminderRunResult = {
+  dryRun: boolean;
+  sentCount: number;
+  failedCount: number;
+  skippedCount: number;
+  pendingCount: number;
+  results?: SendResult[];
+  reminders?: Array<Omit<Reminder, "token"> & { token: string }>;
+  message: string;
+};
+
 function getFcmProjectId(): string {
   const projectId = Deno.env.get("FCM_PROJECT_ID") ?? getGoogleServiceAccountProjectId();
   if (!projectId) {
@@ -172,8 +183,9 @@ function stripToken(reminder: Reminder): Omit<Reminder, "token"> & { token: stri
   };
 }
 
-export async function runMedicationReminders(body: ReminderRequest): Promise<Record<string, unknown>> {
+export async function runMedicationReminders(body: ReminderRequest): Promise<ReminderRunResult> {
   const dryRun = body.dryRun ?? true;
+  const includeReminders = body.includeReminders ?? true;
 
   const rpcName = dryRun ? "due_medication_notifications" : "claim_due_medication_notifications";
   const reminders = await restRpc<Reminder>(rpcName, {
@@ -191,7 +203,7 @@ export async function runMedicationReminders(body: ReminderRequest): Promise<Rec
       failedCount: 0,
       skippedCount,
       pendingCount: reminders.length,
-      reminders: body.includeReminders ? reminders.map(stripToken) : [],
+      reminders: includeReminders ? reminders.map(stripToken) : [],
       message: "FCM dry-run입니다. 실제 푸시는 전송하지 않고 발송 대상만 계산했습니다.",
     };
   }
@@ -217,17 +229,18 @@ export async function runMedicationReminders(body: ReminderRequest): Promise<Rec
   const results = [...fcmResults, ...unsupportedResults];
   await Promise.all(results.map(updateDeliveryResult));
   await Promise.all(results.filter((result) => !result.ok).map(disableInvalidToken));
-  const sentCount = results.filter((result) => result.ok).length;
-  const failedCount = results.filter((result) => !result.ok).length;
+  const sentCount = results.filter((result) => result.status === "sent").length;
+  const failedCount = results.filter((result) => result.status === "failed").length;
+  const totalSkippedCount = results.filter((result) => result.status === "skipped").length;
 
   return {
     dryRun,
     sentCount,
     failedCount,
-    skippedCount,
+    skippedCount: totalSkippedCount,
     pendingCount: reminders.length,
     results,
-    reminders: body.includeReminders ? reminders.map(stripToken) : [],
+    reminders: includeReminders ? reminders.map(stripToken) : [],
     message: failedCount > 0
       ? "일부 FCM 알림 전송에 실패했습니다. 실패 토큰은 프론트에서 갱신하거나 비활성화해야 합니다."
       : "FCM 알림 전송을 완료했습니다.",
