@@ -58,6 +58,12 @@ type PublicLookupResult = {
   forceConfirmationCandidates: Set<string>;
 };
 
+type CandidateEntry = {
+  value: string;
+  score: number;
+  index: number;
+};
+
 function defaultPublicLookup(status: PublicLookupStatus, message: string): PublicLookupResult {
   return {
     attempted: false,
@@ -134,6 +140,15 @@ function normalizeText(text: string): string {
     .trim();
 }
 
+function compactText(text: string): string {
+  return text.replace(/\s+/g, "").trim();
+}
+
+const DRUG_FORM_ENDING = /(정|캡슐|시럽|액|주|연고|크림|겔|패취|패치|산|과립|점안액|흡입제)$/i;
+
+const NON_DRUG_TEXT_PATTERN =
+  /(환자정보|환자정|교부번호|병원정보|병원정|약품사진|약품명|영수증|현금|전액|혼인|공휴|휴원|하세요|공공심야|경기도|봉투|조은봉투|조제약|복약안내|서식|마크로라이드|비스테로이드|스테로이드|진해거담|기침|감염증|치료|항생제|통증|증상|완화|내려주|와주는|약입니다|면역억제|소염작용|호르몬|위점막보호|소화성|위궤양|위염|보호제|코막힘|콧물|졸음|감기로|구형과립|필름코팅|원형정제|장방형|담황색|흰색|황색|주황색|회백색)/i;
+
 const APPEARANCE_WORDS = new Set([
   // 색상
   "흰색","하얀색","백색","노란색","황색","담황색","연황색","주황색","등황색",
@@ -165,6 +180,7 @@ function normalizeAppearanceText(text: string): string {
 
 function isPureAppearanceLine(line: string): boolean {
   const normalized = normalizeAppearanceText(line);
+  const compact = compactText(normalized);
 
   let count = 0;
 
@@ -178,7 +194,55 @@ function isPureAppearanceLine(line: string): boolean {
     }
   }
 
+  for (const word of APPEARANCE_WORDS) {
+    if (word.length >= 2 && compact.includes(word)) {
+      count++;
+      if (count >= 2) {
+        return true;
+      }
+    }
+  }
+
   return false;
+}
+
+function isDoseOrReceiptLine(line: string): boolean {
+  const compact = compactText(line);
+  return /^\d+\s*(회|일|정|포|캡슐|mg|ml|밀리그램|밀리리터|원)$/i.test(line.trim()) ||
+    /^[\d원]+$/.test(compact) ||
+    /^\d+\s+\d+$/.test(line.trim());
+}
+
+function isLikelyNoiseLine(line: string): boolean {
+  const trimmed = line.trim();
+  if (!trimmed) return true;
+  if (isDoseOrReceiptLine(trimmed)) return true;
+  if (NON_DRUG_TEXT_PATTERN.test(trimmed)) return true;
+  if (isPureAppearanceLine(trimmed)) return true;
+  return false;
+}
+
+function isStrongDrugNameCandidate(candidate: string): boolean {
+  const compact = compactText(candidate);
+  if (compact.length < 3 || compact.length > 60) return false;
+  if (!/[가-힣]/.test(compact)) return false;
+  if (isLikelyNoiseLine(candidate)) return false;
+  if (DRUG_FORM_ENDING.test(compact)) return true;
+  return /[가-힣]{4,}/.test(compact);
+}
+
+function scoreCandidate(candidate: string, index: number, medicationSectionStart: number): number {
+  let score = 0;
+  const compact = compactText(candidate);
+
+  if (isStrongDrugNameCandidate(candidate)) score += 100;
+  if (DRUG_FORM_ENDING.test(compact)) score += 40;
+  if (index > medicationSectionStart) score += 25;
+  if (/\d{5,}/.test(compact)) score -= 30;
+  if (isLikelyNoiseLine(candidate)) score -= 120;
+  if (/^[A-Z][A-Z0-9-]{3,}(?:\s+[A-Z0-9-]{2,})?$/.test(candidate)) score += 30;
+
+  return score;
 }
 
 export function isUsefulCandidateLine(line: string): boolean {
@@ -202,7 +266,7 @@ export function isUsefulCandidateLine(line: string): boolean {
     return false;
   }
 
-  if (/^\d+\s*(회|일|정|포|캡슐|mg|ml|밀리그램|밀리리터)$/i.test(trimmed)) {
+  if (isDoseOrReceiptLine(trimmed)) {
     return false;
   }
 
@@ -232,40 +296,70 @@ function extractCandidates(ocrText: string): string[] {
     .split(/[\n\r,;]+|\s{3,}/) /* 스플릿 기준 변경 2 -> 3 : 약제 설명 오인식 문제 해결용임. */
     .map((line) => normalizeText(line))
     .filter(Boolean);
-  const combinedLatinCandidates: string[] = [];
+  const medicationSectionStart = normalizedLines.findIndex((line) => /약품명/.test(line));
+  const entries: CandidateEntry[] = [];
 
   for (let index = 0; index < normalizedLines.length - 1; index += 1) {
     const current = normalizedLines[index];
     const next = normalizedLines[index + 1];
     if (/^[A-Z][A-Z0-9-]{3,}$/.test(current) && /^[A-Z0-9-]{2,4}$/.test(next)) {
-      combinedLatinCandidates.push(`${current} ${next}`);
+      const value = `${current} ${next}`;
+      entries.push({
+        value,
+        score: scoreCandidate(value, index, medicationSectionStart),
+        index,
+      });
     }
   }
 
-  const lines = [
-    ...combinedLatinCandidates,
-    ...normalizedLines.filter(isUsefulCandidateLine),
-  ];
+  normalizedLines.forEach((line, index) => {
+    if (!isUsefulCandidateLine(line)) return;
 
-  const medicineLike = lines.flatMap((line) => {
-    const chunks = [line];
+    entries.push({
+      value: line,
+      score: scoreCandidate(line, index, medicationSectionStart),
+      index,
+    });
+
     const koreanDrugPattern = /[가-힣A-Za-z0-9()[\]-]{2,}(정|캡슐|시럽|액|주|연고|크림|겔|패취|산|과립|점안액|흡입제)/g;
     for (const match of line.matchAll(koreanDrugPattern)) {
-      chunks.push(match[0]);
+      entries.push({
+        value: match[0],
+        score: scoreCandidate(match[0], index, medicationSectionStart) + 30,
+        index,
+      });
     }
+
     const latinBrandPattern = /\b[A-Z][A-Z0-9-]{3,}\b/g;
     for (const match of line.matchAll(latinBrandPattern)) {
-      chunks.push(match[0]);
+      entries.push({
+        value: match[0],
+        score: scoreCandidate(match[0], index, medicationSectionStart),
+        index,
+      });
     }
-    return chunks;
   });
 
-  const uniqueCandidates = [...new Set(medicineLike.filter((candidate) => !/^[A-Z]$|^\d+$/.test(candidate)))];
+  const bestByValue = new Map<string, CandidateEntry>();
+  for (const entry of entries) {
+    const value = entry.value.trim();
+    if (!value || /^[A-Z]$|^\d+$/.test(value)) continue;
+    if (entry.score < 20) continue;
+
+    const previous = bestByValue.get(value);
+    if (!previous || entry.score > previous.score || (entry.score === previous.score && entry.index < previous.index)) {
+      bestByValue.set(value, { ...entry, value });
+    }
+  }
+
+  const uniqueCandidates = [...bestByValue.values()]
+    .sort((a, b) => b.score - a.score || a.index - b.index)
+    .map((entry) => entry.value);
   const specificCandidates = uniqueCandidates.filter(
     (candidate) => !uniqueCandidates.some((other) => other !== candidate && other.startsWith(`${candidate} `)),
   );
 
-  return specificCandidates.slice(0, 30);
+  return specificCandidates.slice(0, 40);
 }
 
 function isBroadLatinBrand(candidate: string): boolean {
@@ -276,10 +370,13 @@ function isPublicLookupCandidate(candidate: string): boolean {
   const trimmed = candidate.trim();
   if (trimmed.length < 3 || trimmed.length > 80) return false;
   if (/^\d+$/.test(trimmed)) return false;
+  if (isLikelyNoiseLine(trimmed)) return false;
   if (/(아침|점심|저녁|식후|식전|복용|처방|약국|전화|주의|보관|용법|용량)/.test(trimmed)) return false;
-  if (/(정|캡슐|시럽|액|연고|크림|겔|패취|산|과립|점안액|mg|ml|밀리그램|밀리리터)/i.test(trimmed)) return true;
+  if (/(정|캡슐|시럽|액|연고|크림|겔|패취|패치|산|과립|점안액|mg|ml|밀리그램|밀리리터)$/i.test(compactText(trimmed))) {
+    return isStrongDrugNameCandidate(trimmed);
+  }
   if (/^[A-Z][A-Z0-9-]{3,}(?:\s+[A-Z0-9-]{2,})?$/.test(trimmed)) return true;
-  return /[가-힣]{2,}/.test(trimmed);
+  return isStrongDrugNameCandidate(trimmed);
 }
 
 function timeoutSignal(ms: number): AbortSignal {
@@ -298,7 +395,8 @@ function normalizeDrugNameForCompare(value: string | null | undefined): string {
 function isStrongNamePrefix(searchText: string, itemName: string | null | undefined): boolean {
   const search = normalizeDrugNameForCompare(searchText);
   const item = normalizeDrugNameForCompare(itemName);
-  return search.length >= 4 && item.startsWith(search);
+  const minLength = DRUG_FORM_ENDING.test(search) ? 3 : 4;
+  return search.length >= minLength && item.startsWith(search);
 }
 
 function isAcceptableCandidateMatch(match: MedicationCandidateMatch): boolean {
@@ -324,7 +422,9 @@ export function getBestMatchByJamo(
   const ranked = candidates
     .map(item => ({ 
       item, 
-      score: calculateWeightedJamoDistance(ocrTerm, item.ITEM_NAME || "") 
+      score: isStrongNamePrefix(ocrTerm, item.ITEM_NAME || item.item_name)
+        ? 0.5
+        : calculateWeightedJamoDistance(ocrTerm, item.ITEM_NAME || item.item_name || "")
     }))
     .sort((a, b) => a.score - b.score);
 
@@ -446,7 +546,10 @@ async function runPublicDrugLookup(
     return defaultPublicLookup("skipped_low_confidence", "OCR 신뢰도가 낮아 공공 의약품 API 자동 조회를 건너뛰었습니다.");
   }
 
-  const lookupCandidates = unmatched.filter(isPublicLookupCandidate).slice(0, 5);
+  const lookupCandidates = unmatched
+    .filter(isPublicLookupCandidate)
+    .sort((a, b) => scoreCandidate(b, 0, -1) - scoreCandidate(a, 0, -1))
+    .slice(0, 5);
   if (lookupCandidates.length === 0) {
     return defaultPublicLookup("not_needed", "공공 API 조회 조건을 만족하는 약품 후보가 없습니다.");
   }

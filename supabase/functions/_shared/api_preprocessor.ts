@@ -1,20 +1,34 @@
 // supabase/functions/_shared/api_preprocessor.ts
 
 export function generateNgramApiParams(rawText: string, n: number = 2): string[] {
-  // 1. 노이즈 제거
-  let cleaned = rawText.replace(/\s+/g, "").trim().replace(/(정|캡슐|시럽|밀리그램|mg)/g, "");
-  if (cleaned.length < n) return [cleaned];
+  const compact = rawText.replace(/\s+/g, "").trim();
+  if (!compact) return [];
 
   const grams = new Set<string>();
-  
-  // 전체 문자열 주입
-  grams.add(cleaned);
+  const withoutDoseUnit = compact.replace(/(밀리그램|밀리그람|mg|mL|ml)$/i, "");
+  const withoutDrugForm = withoutDoseUnit.replace(/(정|캡슐|시럽|액|주|연고|크림|겔|패취|패치|산|과립|점안액|흡입제)$/i, "");
 
-  // n-gram 생성
-  for (let i = 0; i <= cleaned.length - n; i++) {
-    grams.add(cleaned.substring(i, i + n));
+  // Exact-first: public APIs often match official item_name only when the full
+  // photographed drug name is preserved.
+  grams.add(compact);
+  grams.add(withoutDoseUnit);
+  grams.add(withoutDrugForm);
+
+  // Korean product names often start with a short manufacturer prefix, e.g.
+  // 안국레바미피드정 -> 레바미피드정. Try the tail before falling back to n-grams.
+  for (const prefixLength of [2, 3]) {
+    if (compact.length > prefixLength + n) {
+      const tail = compact.slice(prefixLength);
+      grams.add(tail);
+      grams.add(tail.replace(/(정|캡슐|시럽|액|주|연고|크림|겔|패취|패치|산|과립|점안액|흡입제)$/i, ""));
+    }
   }
 
-  // 너무 많은 API 호출 방지를 위해 상위 3개만 반환
-  return Array.from(grams).slice(0, 3);
+  if (compact.length < n) return Array.from(grams).filter(Boolean);
+
+  for (let i = 0; i <= compact.length - n; i++) {
+    grams.add(compact.substring(i, i + n));
+  }
+
+  return Array.from(grams).filter(Boolean).slice(0, 6);
 }
