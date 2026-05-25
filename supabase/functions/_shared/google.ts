@@ -7,6 +7,8 @@ type GoogleServiceAccount = {
   token_uri?: string;
 };
 
+const DEFAULT_SERVICE_ACCOUNT_SECRET = "GOOGLE_SERVICE_ACCOUNT_JSON";
+
 const cachedAccessTokens = new Map<string, { token: string; expiresAt: number }>();
 
 function bytesToBase64(bytes: Uint8Array): string {
@@ -47,21 +49,21 @@ function pemToArrayBuffer(pem: string): ArrayBuffer {
   return bytes.buffer;
 }
 
-function readServiceAccount(): GoogleServiceAccount {
-  const rawServiceAccount = Deno.env.get("GOOGLE_SERVICE_ACCOUNT_JSON");
+function readServiceAccount(secretName = DEFAULT_SERVICE_ACCOUNT_SECRET): GoogleServiceAccount {
+  const rawServiceAccount = Deno.env.get(secretName);
   if (!rawServiceAccount) {
-    throw new HttpError(500, "GOOGLE_SERVICE_ACCOUNT_JSON is required");
+    throw new HttpError(500, `${secretName} is required`);
   }
 
   let serviceAccount: GoogleServiceAccount;
   try {
     serviceAccount = JSON.parse(rawServiceAccount) as GoogleServiceAccount;
   } catch {
-    throw new HttpError(500, "GOOGLE_SERVICE_ACCOUNT_JSON is not valid JSON");
+    throw new HttpError(500, `${secretName} is not valid JSON`);
   }
 
   if (!serviceAccount.client_email || !serviceAccount.private_key) {
-    throw new HttpError(500, "GOOGLE_SERVICE_ACCOUNT_JSON is missing client_email or private_key");
+    throw new HttpError(500, `${secretName} is missing client_email or private_key`);
   }
 
   return serviceAccount;
@@ -104,8 +106,8 @@ async function signJwtWithServiceAccount(serviceAccount: GoogleServiceAccount, s
   return `${unsignedToken}.${base64UrlEncode(new Uint8Array(signature))}`;
 }
 
-export function getGoogleServiceAccountProjectId(): string | null {
-  const rawServiceAccount = Deno.env.get("GOOGLE_SERVICE_ACCOUNT_JSON");
+export function getGoogleServiceAccountProjectId(secretName = DEFAULT_SERVICE_ACCOUNT_SECRET): string | null {
+  const rawServiceAccount = Deno.env.get(secretName);
   if (!rawServiceAccount) {
     return null;
   }
@@ -114,22 +116,26 @@ export function getGoogleServiceAccountProjectId(): string | null {
     const serviceAccount = JSON.parse(rawServiceAccount) as GoogleServiceAccount;
     return serviceAccount.project_id ?? null;
   } catch {
-    throw new HttpError(500, "GOOGLE_SERVICE_ACCOUNT_JSON is not valid JSON");
+    throw new HttpError(500, `${secretName} is not valid JSON`);
   }
 }
 
-export async function getGoogleServiceAccountAccessToken(scope = "https://www.googleapis.com/auth/cloud-platform"): Promise<string | null> {
-  if (!Deno.env.get("GOOGLE_SERVICE_ACCOUNT_JSON")) {
+export async function getGoogleServiceAccountAccessToken(
+  scope = "https://www.googleapis.com/auth/cloud-platform",
+  secretName = DEFAULT_SERVICE_ACCOUNT_SECRET,
+): Promise<string | null> {
+  if (!Deno.env.get(secretName)) {
     return null;
   }
 
   const now = Math.floor(Date.now() / 1000);
-  const cachedAccessToken = cachedAccessTokens.get(scope);
+  const cacheKey = `${secretName}:${scope}`;
+  const cachedAccessToken = cachedAccessTokens.get(cacheKey);
   if (cachedAccessToken && cachedAccessToken.expiresAt - 300 > now) {
     return cachedAccessToken.token;
   }
 
-  const serviceAccount = readServiceAccount();
+  const serviceAccount = readServiceAccount(secretName);
   const tokenUri = serviceAccount.token_uri ?? "https://oauth2.googleapis.com/token";
   const assertion = await signJwtWithServiceAccount(serviceAccount, scope);
   const response = await fetch(tokenUri, {
@@ -150,7 +156,7 @@ export async function getGoogleServiceAccountAccessToken(scope = "https://www.go
     throw new HttpError(502, "Google service account token response is missing access_token", body);
   }
 
-  cachedAccessTokens.set(scope, {
+  cachedAccessTokens.set(cacheKey, {
     token: body.access_token,
     expiresAt: now + Number(body.expires_in ?? 3600),
   });

@@ -2,6 +2,8 @@ import { getGoogleServiceAccountAccessToken, getGoogleServiceAccountProjectId } 
 import { HttpError } from "./http.ts";
 import { restRpc, restWriteSingle } from "./rest.ts";
 
+const FCM_SERVICE_ACCOUNT_SECRET = "FCM_SERVICE_ACCOUNT_JSON";
+
 export type ReminderRequest = {
   windowStart?: string;
   windowEnd?: string;
@@ -49,9 +51,9 @@ type ReminderRunResult = {
 };
 
 function getFcmProjectId(): string {
-  const projectId = Deno.env.get("FCM_PROJECT_ID") ?? getGoogleServiceAccountProjectId();
+  const projectId = Deno.env.get("FCM_PROJECT_ID") ?? getGoogleServiceAccountProjectId(FCM_SERVICE_ACCOUNT_SECRET);
   if (!projectId) {
-    throw new HttpError(500, "FCM_PROJECT_ID is required or GOOGLE_SERVICE_ACCOUNT_JSON must include project_id");
+    throw new HttpError(500, "FCM_PROJECT_ID is required or FCM_SERVICE_ACCOUNT_JSON must include project_id");
   }
   return projectId;
 }
@@ -164,7 +166,9 @@ async function updateDeliveryResult(result: SendResult): Promise<void> {
 
 async function disableInvalidToken(result: SendResult): Promise<void> {
   if (!result.error) return;
-  if (!/(UNREGISTERED|not registered|invalid registration|INVALID_ARGUMENT)/i.test(result.error)) return;
+  if (!/(UNREGISTERED|NotRegistered|not registered|invalid registration|INVALID_ARGUMENT|SENDER_ID_MISMATCH|SenderId mismatch)/i.test(result.error)) {
+    return;
+  }
 
   await restWriteSingle(
     `notification_tokens?id=eq.${encodeURIComponent(result.tokenId)}&select=id,enabled`,
@@ -209,9 +213,12 @@ export async function runMedicationReminders(body: ReminderRequest): Promise<Rem
   }
 
   const projectId = getFcmProjectId();
-  const accessToken = await getGoogleServiceAccountAccessToken("https://www.googleapis.com/auth/firebase.messaging");
+  const accessToken = await getGoogleServiceAccountAccessToken(
+    "https://www.googleapis.com/auth/firebase.messaging",
+    FCM_SERVICE_ACCOUNT_SECRET,
+  );
   if (!accessToken) {
-    throw new HttpError(500, "GOOGLE_SERVICE_ACCOUNT_JSON is required for FCM sending");
+    throw new HttpError(500, "FCM_SERVICE_ACCOUNT_JSON is required for FCM sending");
   }
 
   const unsupportedResults = reminders

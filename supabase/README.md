@@ -77,6 +77,7 @@ supabase secrets set SUPABASE_URL=<your-url>
 supabase secrets set SUPABASE_ANON_KEY=<your-anon-key>
 supabase secrets set SUPABASE_SERVICE_ROLE_KEY=<your-service-role-key>
 supabase secrets set GOOGLE_SERVICE_ACCOUNT_JSON='<your-google-service-account-json>'
+supabase secrets set FCM_SERVICE_ACCOUNT_JSON='<your-fcm-service-account-json>'
 supabase secrets set GOOGLE_VISION_API_KEY=<optional-fallback-google-vision-api-key>
 supabase secrets set GEMINI_API_KEY=<your-gemini-api-key>
 supabase secrets set DATA_GO_KR_SERVICE_KEY=<your-data-go-kr-key>
@@ -90,7 +91,7 @@ supabase secrets set DAILY_GEMINI_LIMIT=100
 
 주의:
 
-- `SUPABASE_SERVICE_ROLE_KEY`, `GOOGLE_SERVICE_ACCOUNT_JSON`, `GOOGLE_VISION_API_KEY`, `GEMINI_API_KEY`, `DATA_GO_KR_SERVICE_KEY`는 클라이언트에 절대 노출하면 안 된다.
+- `SUPABASE_SERVICE_ROLE_KEY`, `GOOGLE_SERVICE_ACCOUNT_JSON`, `FCM_SERVICE_ACCOUNT_JSON`, `GOOGLE_VISION_API_KEY`, `GEMINI_API_KEY`, `DATA_GO_KR_SERVICE_KEY`는 클라이언트에 절대 노출하면 안 된다.
 - 현재 저장소의 `important.md`에 있는 공공데이터포털 키는 폐기하고 새로 발급하는 것을 권장한다.
 - `DATA_GO_KR_SERVICE_KEY`는 함수 내부에서 URL 인코딩된다. 공공데이터포털 호출 인증 오류가 나면 Decoding 키를 Secret에 넣어 다시 시도한다.
 
@@ -106,6 +107,7 @@ DAILY_GOOGLE_OCR_LIMIT
 DAILY_GEMINI_LIMIT
 GOOGLE_VISION_API_KEY
 GOOGLE_SERVICE_ACCOUNT_JSON
+FCM_SERVICE_ACCOUNT_JSON
 FCM_PROJECT_ID
 GEMINI_API_KEY
 DATA_GO_KR_SERVICE_KEY
@@ -114,8 +116,9 @@ CRON_SECRET
 
 FCM 전송 조건:
 
-- 이 프로젝트의 Firebase project id는 `iyakmoji`다. `FCM_PROJECT_ID`는 이 값과 일치해야 한다.
-- `GOOGLE_SERVICE_ACCOUNT_JSON`의 서비스 계정이 Firebase 프로젝트에 속해 있거나 `FCM_PROJECT_ID` 프로젝트에 대해 Firebase Cloud Messaging 발송 권한을 가져야 한다.
+- 이 프로젝트의 Firebase project id는 프론트 설정 기준 `duyuthon-iyakmoji`다. `FCM_PROJECT_ID`는 이 값과 일치해야 한다.
+- `GOOGLE_SERVICE_ACCOUNT_JSON`은 OCR 등 Google API용으로 유지한다.
+- `FCM_SERVICE_ACCOUNT_JSON`의 서비스 계정이 Firebase 프로젝트에 속해 있거나 `FCM_PROJECT_ID` 프로젝트에 대해 Firebase Cloud Messaging 발송 권한을 가져야 한다.
 - 필요한 OAuth scope는 `https://www.googleapis.com/auth/firebase.messaging`이며 함수 내부에서 자동으로 사용한다.
 - Google Cloud IAM에서 서비스 계정에 `Firebase Cloud Messaging API Admin` 또는 동등한 `firebase.messaging.messages.create` 권한을 부여한다.
 - Firebase/Google Cloud 프로젝트에서 Firebase Cloud Messaging API가 활성화되어 있어야 한다.
@@ -423,7 +426,233 @@ Cron secret 기반 운영 wrapper로 호출할 때:
 - 보호자 승인 전 환자 데이터가 차단되는지
 - 알림 토큰이 본인 계정에만 저장/조회되는지
 
-## 6. 현재 구현의 제한점
+## 6. Supabase Cron 기반 정기 복약 알림 설정
+
+### 초기 설정 전제조건
+
+- `supabase secrets list`에서 `CRON_SECRET` 확인
+- Supabase Dashboard > Extensions에서 `pg_cron`, `pg_net`, `vault` 활성화 확인
+- `maintenance-runner` Edge Function이 `verify_jwt=false` 상태 확인
+- `send-medication-reminders` Edge Function이 admin 권한 필요 상태 확인
+- FCM 서비스 계정 JSON (`FCM_SERVICE_ACCOUNT_JSON`)과 `FCM_PROJECT_ID=duyuthon-iyakmoji` 설정 완료
+- 실발송 전에는 `FCM_SERVICE_ACCOUNT_JSON`의 서비스 계정이 `duyuthon-iyakmoji` 프로젝트에 속해 있거나 해당 프로젝트의 FCM 발송 권한을 가져야 한다.
+
+### Dry-run 모드 Cron 등록
+
+다음 SQL은 schema migration이 아니라 운영 SQL이다. repo에서는 `supabase/snippets/register-fcm-reminder-cron-dry-run.sql`을 사용한다.
+
+**주의: 아래 SQL은 마이그레이션 적용 전에 반드시 검증해야 한다.**
+
+```sql
+-- 기존 같은 이름의 cron job이 있으면 삭제
+-- SELECT cron.unschedule('send-medication-reminders-every-30-min');
+
+-- Dry-run 모드 Cron job 등록 (초기 설정)
+SELECT
+  cron.schedule(
+    'send-medication-reminders-every-30-min',
+    '*/30 * * * *',
+    $$
+      select net.http_post(
+        url := 'https://hygsrrmoawezonahnljn.supabase.co/functions/v1/maintenance-runner',
+        body := jsonb_build_object(
+          'job', 'send_medication_reminders',
+          'windowMinutes', 30,
+          'dryRun', true,
+          'includeReminders', false
+        ),
+        headers := jsonb_build_object(
+          'Content-Type', 'application/json',
+          'x-cron-secret', (
+            SELECT decrypted_secret
+            FROM vault.decrypted_secrets
+            WHERE name = 'maintenance_runner_cron_secret'
+          )
+        )
+      );
+    $$
+  );
+```
+
+Vault 저장 기준:
+
+```sql
+SELECT name, description
+FROM vault.secrets
+WHERE name = 'maintenance_runner_cron_secret';
+```
+
+### Cron 실행 로그 모니터링
+
+Dry-run 기간(약 7일) 동안 30분마다 실행되는 Cron의 성공/실패 로그를 조회한다.
+
+**최근 10회 실행 현황:**
+
+```sql
+SELECT
+  d.jobid,
+  j.jobname,
+  d.status,
+  d.database,
+  d.username,
+  d.start_time AT TIME ZONE 'Asia/Seoul' as start_time_kst,
+  d.end_time AT TIME ZONE 'Asia/Seoul' as end_time_kst,
+  EXTRACT(EPOCH FROM (d.end_time - d.start_time)) as duration_sec,
+  d.return_message
+FROM cron.job_run_details d
+JOIN cron.job j ON j.jobid = d.jobid
+WHERE j.jobname = 'send-medication-reminders-every-30-min'
+ORDER BY d.start_time DESC
+LIMIT 10;
+```
+
+**현재 등록된 Cron job 확인:**
+
+```sql
+SELECT
+  jobid,
+  schedule,
+  command,
+  nodename,
+  nodeport,
+  database,
+  username,
+  active
+FROM cron.job
+WHERE jobname = 'send-medication-reminders-every-30-min';
+```
+
+### 실발송 전환 조건
+
+다음 조건을 모두 만족한 후에만 dry-run에서 실발송(`dryRun=false`)으로 전환한다.
+
+**사전 준비:**
+1. 실제 프론트 앱(브라우저 또는 모바일)에서 FCM token 저장 성공
+2. 테스트 사용자에게 active `user_medications` 1개 이상 존재
+3. 해당 약품에 active `medication_schedules` 1개 이상, `notification_enabled=true`
+4. 해당 일정의 `planned_date`, `planned_time`이 향후 30분 이내
+
+**Dry-run 검증:**
+1. 운영자가 `maintenance-runner`를 수동 호출: `dryRun=true`, `targetUserId=<테스트사용자UUID>`
+2. 응답에서 `pendingCount > 0` 확인 (대상이 정확히 계산되었는지)
+3. `cron.job_run_details`에서 동일 시간대 실행 로그 없음 확인 (수동 호출은 cron 로그에 안 남음)
+
+**Controlled real-send 테스트:**
+1. 운영자가 `maintenance-runner` 수동 호출: `dryRun=false`, `targetUserId=<테스트사용자UUID>`
+2. 응답에서 `sentCount > 0` 확인
+3. 실제 기기/브라우저에서 FCM 푸시 수신 확인
+4. `medication_notification_deliveries` 테이블 조회:
+   ```sql
+   SELECT
+     id,
+     notification_token_id,
+     schedule_id,
+     planned_date,
+     planned_time,
+     status,
+     provider_message_id,
+     error,
+     created_at
+   FROM medication_notification_deliveries
+   WHERE notification_token_id = '<테스트_notification_token_id>'
+   ORDER BY created_at DESC
+   LIMIT 5;
+   ```
+5. `status = 'sent'` 또는 `'failed'` 확인 (시도 기록 존재)
+6. invalid token이면 `notification_tokens.enabled=false`로 자동 비활성화 확인
+
+### 실발송 모드로 재등록
+
+controlled test 성공 후, 다음 SQL로 dry-run을 실발송으로 전환한다.
+
+```sql
+-- 기존 dry-run job 삭제
+SELECT cron.unschedule('send-medication-reminders-every-30-min');
+
+-- 실발송 모드 Cron job 재등록
+SELECT
+  cron.schedule(
+    'send-medication-reminders-every-30-min',
+    '*/30 * * * *',
+    $$
+      select net.http_post(
+        url := 'https://hygsrrmoawezonahnljn.supabase.co/functions/v1/maintenance-runner',
+        body := jsonb_build_object(
+          'job', 'send_medication_reminders',
+          'windowMinutes', 30,
+          'dryRun', false,
+          'includeReminders', false
+        ),
+        headers := jsonb_build_object(
+          'Content-Type', 'application/json',
+          'x-cron-secret', (
+            SELECT decrypted_secret
+            FROM vault.decrypted_secrets
+            WHERE name = 'maintenance_runner_cron_secret'
+          )
+        )
+      );
+    $$
+  );
+```
+
+### 운영 모니터링
+
+**일일 발송 현황:**
+
+```sql
+SELECT
+  DATE(created_at AT TIME ZONE 'Asia/Seoul') as send_date_kst,
+  COUNT(*) as total_deliveries,
+  COUNT(CASE WHEN status = 'sent' THEN 1 END) as sent_count,
+  COUNT(CASE WHEN status = 'failed' THEN 1 END) as failed_count,
+  COUNT(CASE WHEN status = 'skipped' THEN 1 END) as skipped_count
+FROM medication_notification_deliveries
+GROUP BY DATE(created_at AT TIME ZONE 'Asia/Seoul')
+ORDER BY send_date_kst DESC
+LIMIT 7;
+```
+
+**토큰 비활성화 현황:**
+
+```sql
+SELECT
+  COUNT(*) as disabled_token_count,
+  COUNT(DISTINCT user_id) as affected_user_count,
+  STRING_AGG(DISTINCT error, '; ') as errors
+FROM (
+  SELECT
+    nt.user_id,
+    mnd.error
+  FROM notification_tokens nt
+  LEFT JOIN medication_notification_deliveries mnd ON nt.id = mnd.notification_token_id
+  WHERE nt.enabled = false
+  ORDER BY nt.updated_at DESC
+  LIMIT 100
+);
+```
+
+**중복 발송 방지 검증:**
+
+동일 `notification_token_id + schedule_id + planned_date + planned_time` 조합은 1회만 전송되어야 한다.
+
+```sql
+SELECT
+  notification_token_id,
+  schedule_id,
+  planned_date,
+  planned_time,
+  COUNT(*) as delivery_count,
+  STRING_AGG(DISTINCT status, ',') as statuses
+FROM medication_notification_deliveries
+GROUP BY notification_token_id, schedule_id, planned_date, planned_time
+HAVING COUNT(*) > 1
+ORDER BY planned_date DESC;
+```
+
+결과가 공백이면 정상 (중복 없음).
+
+## 7. 현재 구현의 제한점
 
 이 코드는 프로덕션 뼈대를 제공하지만, 다음 항목은 실제 배포 전에 보강해야 한다.
 

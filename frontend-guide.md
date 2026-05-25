@@ -17,11 +17,11 @@ Project URL: https://hygsrrmoawezonahnljn.supabase.co
 VITE_SUPABASE_URL=https://hygsrrmoawezonahnljn.supabase.co
 VITE_SUPABASE_ANON_KEY=<Supabase anon 또는 publishable key>
 VITE_FIREBASE_API_KEY=<Firebase web api key>
-VITE_FIREBASE_AUTH_DOMAIN=iyakmoji.firebaseapp.com
-VITE_FIREBASE_PROJECT_ID=iyakmoji
-VITE_FIREBASE_STORAGE_BUCKET=iyakmoji.firebasestorage.app
-VITE_FIREBASE_MESSAGING_SENDER_ID=478796151576
-VITE_FIREBASE_APP_ID=1:478796151576:web:e25daf3fc1cc32345ffc6d
+VITE_FIREBASE_AUTH_DOMAIN=duyuthon-iyakmoji.firebaseapp.com
+VITE_FIREBASE_PROJECT_ID=duyuthon-iyakmoji
+VITE_FIREBASE_STORAGE_BUCKET=duyuthon-iyakmoji.firebasestorage.app
+VITE_FIREBASE_MESSAGING_SENDER_ID=196557617071
+VITE_FIREBASE_APP_ID=1:196557617071:web:889d4ab08599fbd485615a
 VITE_FIREBASE_WEB_PUSH_VAPID_KEY=<Firebase Console Web Push certificate key>
 ```
 
@@ -31,11 +31,11 @@ VITE_FIREBASE_WEB_PUSH_VAPID_KEY=<Firebase Console Web Push certificate key>
 NEXT_PUBLIC_SUPABASE_URL=https://hygsrrmoawezonahnljn.supabase.co
 NEXT_PUBLIC_SUPABASE_ANON_KEY=<Supabase anon 또는 publishable key>
 NEXT_PUBLIC_FIREBASE_API_KEY=<Firebase web api key>
-NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN=iyakmoji.firebaseapp.com
-NEXT_PUBLIC_FIREBASE_PROJECT_ID=iyakmoji
-NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET=iyakmoji.firebasestorage.app
-NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=478796151576
-NEXT_PUBLIC_FIREBASE_APP_ID=1:478796151576:web:e25daf3fc1cc32345ffc6d
+NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN=duyuthon-iyakmoji.firebaseapp.com
+NEXT_PUBLIC_FIREBASE_PROJECT_ID=duyuthon-iyakmoji
+NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET=duyuthon-iyakmoji.firebasestorage.app
+NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=196557617071
+NEXT_PUBLIC_FIREBASE_APP_ID=1:196557617071:web:889d4ab08599fbd485615a
 NEXT_PUBLIC_FIREBASE_WEB_PUSH_VAPID_KEY=<Firebase Console Web Push certificate key>
 ```
 
@@ -52,6 +52,7 @@ ANON키는 @서상혁 에게 개인 DM으로 요청 부탁드립니다.
 SUPABASE_SERVICE_ROLE_KEY
 SUPABASE_SECRET_KEYS
 GOOGLE_SERVICE_ACCOUNT_JSON
+FCM_SERVICE_ACCOUNT_JSON
 GOOGLE_VISION_API_KEY
 GEMINI_API_KEY
 DATA_GO_KR_SERVICE_KEY
@@ -61,7 +62,7 @@ CRON_SECRET
 
 위 값들은 모두 Supabase Edge Function Secret으로만 사용한다.
 
-Firebase Web config와 VAPID public key는 프론트에 들어갈 수 있는 공개 설정이다. 다만 Google Cloud/Firebase Console에서 API key HTTP referrer 제한을 걸고, `GOOGLE_SERVICE_ACCOUNT_JSON` 같은 서버 권한 값은 절대 프론트에 넣지 않는다.
+Firebase Web config와 VAPID public key는 프론트에 들어갈 수 있는 공개 설정이다. 다만 Google Cloud/Firebase Console에서 API key HTTP referrer 제한을 걸고, `GOOGLE_SERVICE_ACCOUNT_JSON`, `FCM_SERVICE_ACCOUNT_JSON` 같은 서버 권한 값은 절대 프론트에 넣지 않는다.
 
 ## 2. Supabase 클라이언트 생성
 
@@ -1626,7 +1627,7 @@ export async function checkInteractions(medicationId: string) {
 
 ### 15.0 Web FCM 설정
 
-Firebase Web SDK config는 프론트 공개 설정이다. 백엔드는 이 config를 직접 사용하지 않고, Supabase Secret의 `GOOGLE_SERVICE_ACCOUNT_JSON`과 `FCM_PROJECT_ID=iyakmoji`로 FCM HTTP v1 발송을 수행한다.
+Firebase Web SDK config는 프론트 공개 설정이다. 백엔드는 이 config를 직접 사용하지 않고, Supabase Secret의 `FCM_SERVICE_ACCOUNT_JSON`과 `FCM_PROJECT_ID=duyuthon-iyakmoji`로 FCM HTTP v1 발송을 수행한다. OCR용 `GOOGLE_SERVICE_ACCOUNT_JSON`과 FCM용 `FCM_SERVICE_ACCOUNT_JSON`은 분리한다.
 
 프론트에서 추가로 준비할 값:
 
@@ -1695,11 +1696,11 @@ importScripts("<https://www.gstatic.com/firebasejs/12.13.0/firebase-messaging-co
 
 firebase.initializeApp({
   apiKey: "<Firebase web api key>",
-  authDomain: "iyakmoji.firebaseapp.com",
-  projectId: "iyakmoji",
-  storageBucket: "iyakmoji.firebasestorage.app",
-  messagingSenderId: "478796151576",
-  appId: "1:478796151576:web:e25daf3fc1cc32345ffc6d",
+  authDomain: "duyuthon-iyakmoji.firebaseapp.com",
+  projectId: "duyuthon-iyakmoji",
+  storageBucket: "duyuthon-iyakmoji.firebasestorage.app",
+  messagingSenderId: "196557617071",
+  appId: "1:196557617071:web:889d4ab08599fbd485615a",
 });
 
 const messaging = firebase.messaging();
@@ -1864,13 +1865,84 @@ export async function sendMedicationReminders(params?: {
 
 - 일반 프론트 사용자는 이 함수를 호출하지 않는다.
 - 앱은 `notification-tokens`로 FCM 토큰만 저장한다.
-- 운영자 또는 Supabase scheduled job이 `send-medication-reminders`를 주기적으로 호출한다.
+- 운영자 또는 Supabase Cron이 `maintenance-runner`를 주기적으로 호출한다. 일반 프론트와 scheduled job은 `send-medication-reminders`를 직접 호출하지 않는다.
 - `dryRun = true`이면 실제 푸시를 보내지 않고 대상만 계산한다.
 - `dryRun = false`이면 발송 대상을 먼저 `medication_notification_deliveries`에 claim한 뒤 FCM HTTP v1으로 전송한다.
 - 같은 토큰/일정/날짜/시간 조합은 발송 이력으로 중복 전송을 막는다.
 - FCM이 `UNREGISTERED` 또는 invalid token 계열 오류를 반환하면 해당 토큰은 자동 비활성화된다.
 - 프론트 token 저장 전에는 운영 scheduled job을 `dryRun = true`로 유지한다.
 - token 저장 후에는 운영자가 `targetUserId`, `includeReminders = true`, `dryRun = true`로 대상 계산을 먼저 확인하고, controlled 1회 발송 성공 후에만 `dryRun = false`로 전환한다.
+
+### 15.1 Supabase Cron 기반 정기 알림 발송
+
+**프론트 역할 명확화:**
+- 프론트는 **FCM 토큰 저장**만 담당한다.
+- 실제 복약 알림 **발송은 Supabase Cron**에서 30분 주기로 자동 수행한다.
+
+**Supabase Cron 흐름:**
+
+Supabase의 `pg_cron` 확장은 매 30분마다 `maintenance-runner` Edge Function을 HTTP POST로 호출한다.
+
+```
+┌─────────────────────────────────┐
+│ Supabase pg_cron 스케줄러        │
+│ (매 30분마다 실행)               │
+└──────────────┬──────────────────┘
+               │ HTTP POST
+               ▼
+    ┌──────────────────────┐
+    │ maintenance-runner   │ (verify_jwt=false, x-cron-secret 헤더 검증)
+    │ (Edge Function)      │
+    └──────────────┬───────┘
+                   │
+                   ▼
+        ┌──────────────────────┐
+        │send-medication-      │ (admin 권한, dryRun=true/false)
+        │reminders             │
+        └──────────────┬───────┘
+                       │
+         ┌─────────────┼─────────────┐
+         │             │             │
+         ▼             ▼             ▼
+    ┌────────┐  ┌──────────┐  ┌──────────┐
+    │ FCM 발송 │  │DB 저장   │  │로그 기록  │
+    │(성공)   │  │(delivery)│  │(실패)    │
+    └────────┘  └──────────┘  └──────────┘
+```
+
+**Cron 실행 조건:**
+
+- `job: "send_medication_reminders"`
+- `windowMinutes: 30` (현재 시간부터 30분 후까지 범위)
+- `dryRun: true` (초기 검증 단계) 또는 `dryRun: false` (실발송)
+- `includeReminders: false` (내부 테스트 제외)
+
+**초기 적용 단계:**
+
+1. **Dry-run 검증** (`dryRun: true`)
+   - Cron 등록 후 30분 주기로 실행
+   - `medication_notification_deliveries` 테이블에 기록 없음
+   - 대상 사용자/약품/일정이 맞는지 로그로 확인
+   - 이상 없으면 7일 정도 운영
+
+2. **Controlled Test** (수동 호출)
+   - 테스트 사용자 선정
+   - 테스트 약품 및 일정 생성 (`notification_enabled=true`)
+   - 운영자가 `maintenance-runner`를 수동으로 호출 (`targetUserId=테스트사용자ID`, `dryRun=false`)
+   - 실제 기기/브라우저에서 FCM 푸시 수신 확인
+   - `medication_notification_deliveries.status = 'sent'` 확인
+
+3. **실발송 전환** (Cron 재등록, `dryRun: false`)
+   - 2번 테스트 성공 후 Cron을 같은 이름으로 재등록
+   - body의 `dryRun: false`로 변경
+   - 이후 모든 대상 사용자가 정기적으로 알림 수신
+
+**프론트 구현 시 참고:**
+
+- 앱에서 token 저장 시, "알림 준비 중" 상태 표시
+- Dry-run 기간(약 7일)에는 프론트에서 "알림 준비 단계" 안내 필수
+- Token 저장 완료 후 "알림이 활성화되었습니다" 메시지 표시
+- 정기 알림 외 즉시 발송 기능은 현재 프론트 계약에 포함하지 않는다.
 
 ## 16. 보호자 연동
 
